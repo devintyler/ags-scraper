@@ -10,13 +10,13 @@
     <!-- App Header -->
     <header class="app-header">
       <span class="app-title">GSP Scraper</span>
-      <button id="settings-btn" class="settings-btn">Settings</button>
+      <button id="settings-btn" class="settings-btn" aria-expanded="false" aria-controls="settings-panel">Settings</button>
     </header>
 
     <!-- Settings Panel -->
     <section id="settings-panel" class="panel hidden">
       <h2>Settings</h2>
-      <form id="settings-form">
+      <form id="settings-form" onsubmit="return false;">
         <div class="field-group">
           <label for="ss-user">ScreenScraper Username</label>
           <input type="text" id="ss-user" placeholder="Username" autocomplete="off" />
@@ -58,7 +58,36 @@
 
       <section id="step-0" class="step-content active">
         <h2>Scrape</h2>
-        <p>ROM setup — coming in Phase 2.</p>
+        <div class="field-group file-picker-group">
+          <label for="rom-path">ROM File <span class="label-muted">(filename used for search &amp; output — not read or uploaded)</span></label>
+          <div class="file-picker-row">
+            <input type="text" id="rom-path" placeholder="Select a ROM file…" readonly />
+            <button type="button" id="rom-browse-btn" class="btn-outline">Select</button>
+          </div>
+        </div>
+        <div class="field-group file-picker-group">
+          <label for="output-dir">Output Directory</label>
+          <div class="file-picker-row">
+            <input type="text" id="output-dir" placeholder="Select output folder…" readonly />
+            <button type="button" id="output-browse-btn" class="btn-outline">Browse</button>
+          </div>
+        </div>
+        <div class="field-group">
+          <label for="search-term">Search Term</label>
+          <input type="text" id="search-term" placeholder="Auto-filled from ROM filename" />
+        </div>
+        <div class="field-group">
+          <label>Source</label>
+          <label class="checkbox-label">
+            <input type="checkbox" id="src-sgdb" checked disabled title="Only SteamGridDB is available in this version" />
+            SteamGridDB
+          </label>
+        </div>
+        <div class="scrape-actions">
+          <button type="button" id="scrape-btn" disabled>Scrape</button>
+          <span id="scrape-status"></span>
+        </div>
+        <div id="scrape-result" class="scrape-result hidden"></div>
       </section>
 
       <section id="step-1" class="step-content">

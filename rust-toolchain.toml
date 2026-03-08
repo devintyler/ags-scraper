@@ -1,0 +1,3 @@
+[toolchain]
+# Rust 2024 edition requires >= 1.85
+channel = "stable"

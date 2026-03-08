@@ -1,6 +1,29 @@
 use crate::config;
+use crate::AppClient;
 use secrecy::{ExposeSecret, SecretString};
 use serde::Serialize;
+
+#[derive(Serialize, Clone)]
+pub struct ImageCandidate {
+    pub url: String,
+    pub source: String,
+}
+
+#[derive(serde::Deserialize, Serialize, Clone)]
+pub struct GameCandidate {
+    pub id: u64,
+    pub name: String,
+}
+
+#[derive(Serialize)]
+pub struct SearchResults {
+    pub boxart: Vec<ImageCandidate>,
+    pub screenshot: Vec<ImageCandidate>,
+    pub title: Vec<ImageCandidate>,
+    pub menu: Vec<ImageCandidate>,
+    pub matched_game: Option<GameCandidate>,
+    pub game_candidates: Vec<GameCandidate>, // alternative game matches the user can switch to
+}
 
 #[derive(Serialize)]
 pub struct ConfigView {
@@ -10,6 +33,21 @@ pub struct ConfigView {
     /// True if an API key is stored; the plaintext is never sent to the frontend.
     pub steamgriddb_key_set: bool,
 }
+
+/// Loads config from disk and decrypts the SteamGridDB API key.
+/// Uses spawn_blocking to avoid blocking the async executor with file I/O and DPAPI calls.
+async fn load_sgdb_api_key() -> Result<SecretString, String> {
+    let cfg = tokio::task::spawn_blocking(config::load_config)
+        .await
+        .map_err(|e| e.to_string())??;
+    if cfg.steamgriddb.api_key_enc.is_empty() {
+        return Err("SteamGridDB API key not configured".to_string());
+    }
+    config::decrypt(&cfg.steamgriddb.api_key_enc)
+}
+
+// load_config_cmd and save_config_cmd are sync commands invoked infrequently
+// (settings page open/save). The brief blocking I/O is acceptable here.
 
 #[tauri::command]
 pub fn load_config_cmd() -> Result<ConfigView, String> {
@@ -56,5 +94,79 @@ pub fn save_config_cmd(
             api_key_enc: key_enc,
         },
         ui: existing.ui,
+    })
+}
+
+#[tauri::command]
+pub async fn search_game(
+    http: tauri::State<'_, AppClient>,
+    _rom_filename: String,   // full filename incl. extension — TODO: pass to ScreenScraper when integrated
+    search_term: String,
+    _system_id: Option<u32>, // TODO: pass to ScreenScraper when integrated
+) -> Result<SearchResults, String> {
+    let api_key_secret = load_sgdb_api_key().await?;
+    let api_key = api_key_secret.expose_secret();
+    let client = &http.0;
+
+    let games = crate::steamgriddb::search_game(client, &search_term, api_key).await?;
+    if games.is_empty() {
+        return Ok(SearchResults {
+            boxart: vec![],
+            screenshot: vec![],
+            title: vec![],
+            menu: vec![],
+            matched_game: None,
+            game_candidates: vec![],
+        });
+    }
+
+    let first_id = games[0].id;
+    let matched = GameCandidate { id: first_id, name: games[0].name.clone() };
+    let game_candidates: Vec<GameCandidate> = games[1..]
+        .iter()
+        .map(|g| GameCandidate { id: g.id, name: g.name.clone() })
+        .collect();
+
+    let (grids, logos) = tokio::join!(
+        crate::steamgriddb::fetch_grids(client, first_id, api_key),
+        crate::steamgriddb::fetch_logos(client, first_id, api_key),
+    );
+    let grids = grids?;
+    let logos = logos?;
+
+    Ok(SearchResults {
+        boxart: grids.clone(),
+        screenshot: vec![],
+        title: logos,
+        menu: grids,
+        matched_game: Some(matched),
+        game_candidates,
+    })
+}
+
+#[tauri::command]
+pub async fn fetch_sgdb_images(
+    http: tauri::State<'_, AppClient>,
+    game_id: u64,
+    game_name: String,
+) -> Result<SearchResults, String> {
+    let api_key_secret = load_sgdb_api_key().await?;
+    let api_key = api_key_secret.expose_secret();
+    let client = &http.0;
+
+    let (grids, logos) = tokio::join!(
+        crate::steamgriddb::fetch_grids(client, game_id, api_key),
+        crate::steamgriddb::fetch_logos(client, game_id, api_key),
+    );
+    let grids = grids?;
+    let logos = logos?;
+
+    Ok(SearchResults {
+        boxart: grids.clone(),
+        screenshot: vec![],
+        title: logos,
+        menu: grids,
+        matched_game: Some(GameCandidate { id: game_id, name: game_name }),
+        game_candidates: vec![], // frontend manages the full game list
     })
 }

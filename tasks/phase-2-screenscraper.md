@@ -1,65 +1,34 @@
-# Phase 2 — ScreenScraper API Client & Main View
+# Phase 2 — SteamGridDB Client & Main View
 
-## Goal
-End-to-end scrape of a single ROM via ScreenScraper, returning image candidate URLs displayed in the UI. After this phase you can enter a ROM filename, click Scrape, and see real results.
+> **Note:** This phase was originally planned as the ScreenScraper client. ScreenScraper dev
+> credentials were pending at the time, so SteamGridDB (which requires only a user API key) was
+> implemented instead. ScreenScraper integration is now tracked in phase-6.
 
-## Context
-- Phase 1 must be complete (config, credentials, Settings view).
-- ScreenScraper API docs: https://www.screenscraper.fr/webapi2.php (French, use browser translate)
-- MAME is the primary use case — system ID 75, ROM short names (e.g. `mspacman` from `mspacman.zip`)
-- Auth: username + password passed as query params `devid`, `devpassword`, `ssid`, `sspassword`
-  - For open-source use: `devid` and `devpassword` should be a registered developer account (the user's own, or a shared project dev ID stored as a build-time env var — do NOT hardcode credentials)
-  - `ssid` / `sspassword` are the end user's ScreenScraper account credentials from config
+## What Was Built
 
-## Work Items
+- `src/steamgriddb.rs` — SteamGridDB API client (search, grids, logos)
+- `src/commands.rs` — `search_game`, `fetch_sgdb_images` Tauri commands; `ImageCandidate`, `SearchResults`, `GameCandidate` types
+- Main view UI — ROM file picker, output dir picker, editable search term, Scrape button
+- `tauri-plugin-dialog` — ROM file and folder picker dialogs
+- Alternative game match picker — search returns all candidates; user can click any to re-fetch images
 
-1. **Register a ScreenScraper developer ID**
-   - Go to https://www.screenscraper.fr and register a dev account
-   - Store `SCREENSCRAPER_DEV_ID` and `SCREENSCRAPER_DEV_PASSWORD` as environment variables read at build time, or as non-sensitive build constants (dev credentials are separate from user credentials and lower-risk)
-   - Document this requirement in a `CONTRIBUTING.md` or README note
+## Key Decisions Made During Implementation
 
-2. **Implement ScreenScraper API client (`src/screenscraper.rs`)**
-   - Base URL: `https://www.screenscraper.fr/api2/`
-   - Key endpoint: `jeuRecherche.php` — search by game name
-     - Params: `devid`, `devpassword`, `ssid`, `sspassword`, `softname=gsp-scraper`, `output=json`, `recherche={term}`, `systemeid={id}`
-   - Response parsing: extract image entries of types `box-2D`, `ss`, `wheel` from the `jeu.medias` array
-   - Each image entry has: `type`, `region`, `url`, `format`
-   - Return a structured `SearchResult` with candidate lists per image type
+- **No dimension filter on grids** — SGDB's `?dimensions=600x900,342x482` filter produced too many
+  empty results (games that exist but only have artwork in other sizes). We fetch all grids and
+  resize/crop in Phase 4.
+- **`rom_filename` kept separate from `search_term`** — `rom_filename` (with extension) is passed
+  through for ScreenScraper and output naming; `search_term` is the user-editable API query string
+  (defaults to the filename stem).
+- **Output dir persistence removed** — originally planned, removed in favour of auto-filling from
+  the selected ROM's directory on each session.
+- **System ID field removed** — deferred until ScreenScraper integration; no one will know the
+  numeric ID without a UI to look it up.
 
-3. **Implement `search_game` Tauri command**
-   - Signature: `search_game(rom_filename: String, system_id: Option<u32>) -> Result<SearchResults, String>`
-   - Strip file extension from `rom_filename` to get search term
-   - If `system_id` is None, omit the `systemeid` param (search all systems)
-   - Return `SearchResults { boxart: Vec<ImageCandidate>, screenshot: Vec<ImageCandidate>, title: Vec<ImageCandidate>, menu: Vec<ImageCandidate> }`
-   - Note: `menu` returns the same candidates as `boxart` (same `box-2D` results, user picks independently)
+## Acceptance Criteria (met)
 
-4. **Build Main view (frontend)**
-   - ROM file picker (opens Windows file dialog via Tauri dialog plugin)
-   - Output directory picker (opens folder dialog)
-   - Search field — auto-populated from ROM filename (extension stripped), fully editable
-   - System ID field — optional number input, placeholder "Leave blank to search all systems" with a note linking to https://www.screenscraper.fr/systemesListe.php for ID lookup
-   - Scrape button — disabled until ROM filename and output dir are both set
-   - Source toggle — for now just ScreenScraper (SteamGridDB added in Phase 6)
-   - Results area — after scraping, show count of candidates found per image type
-
-5. **Wire up scrape flow**
-   - Scrape button click → call `search_game` → on success, navigate to Image Picker view (Phase 3 placeholder for now)
-   - On error: display inline error message (auth failure, no results, network error)
-   - Show loading spinner during scrape
-
-6. **Persist last-used output directory**
-   - On successful scrape, save `last_output_dir` to config via `save_config`
-   - Repopulate output directory field on app load from config
-
-## Acceptance Criteria
-- [ ] Entering `mspacman.zip` and clicking Scrape returns image candidates from ScreenScraper
-- [ ] Search field is pre-filled with `mspacman` but can be edited before scraping
-- [ ] Auth errors surface a readable message (not a raw API error)
-- [ ] Zero results shows a clear message with the search term used
-- [ ] Last-used output directory persists across sessions
-
-## Notes
-- ScreenScraper returns images with region tags (us, eu, jp, ss, etc.). Don't filter by region in v1 — return all and let the user choose.
-- The `wheel` type covers what we call "title" throughout this project. Use `wheel` when querying the API; map to `title` internally.
-- The API is rate-limited. For single-ROM mode this is not a concern, but add a reasonable timeout (30s) on requests.
-- If ScreenScraper returns a `jeuNotTrouve` response, treat as zero results.
+- [x] Picking a ROM and clicking Scrape (or pressing Enter) returns image candidates from SteamGridDB
+- [x] Search field pre-fills from ROM filename stem, fully editable
+- [x] Matched game name is shown; alternative matches are listed and clickable to re-fetch
+- [x] Auth errors and zero-result cases surface readable messages
+- [x] Output dir auto-fills from the ROM's directory

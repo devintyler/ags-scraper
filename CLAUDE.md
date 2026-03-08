@@ -99,7 +99,7 @@ last_output_dir = ""
 - **Temp files**: Written to `%APPDATA%\gsp-scraper\temp\{hash}_{type}_{preset}.{ext}`. Cleaned on app startup and on "Scrape Another ROM".
 - **Frontend asset loading**: Use `convertFileSrc()` from `@tauri-apps/api` to convert local cache/temp paths to `asset://` URLs for the WebView.
 - **Overwrite check**: Before exporting, check if any of the four output files already exist and warn the user. Do not create the output directory if it doesn't exist.
-- **SteamGridDB**: Only used for boxart (grids, filter `dimensions=600x900,342x482`) and title/logos — never screenshots. Run in parallel with ScreenScraper via `tokio::join!`.
+- **SteamGridDB**: Grids (`dimensions=600x900,342x482`, portrait format) populate both boxart and menu (both output at 236×322); logos populate title. Never used for screenshots. Run in parallel with ScreenScraper via `tokio::join!`.
 
 ## Development Phases
 
