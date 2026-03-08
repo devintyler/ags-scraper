@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GSP Scraper</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <!-- App Header -->
+    <header class="app-header">
+      <span class="app-title">GSP Scraper</span>
+      <button id="settings-btn" class="settings-btn">Settings</button>
+    </header>
+
+    <!-- Settings Panel -->
+    <section id="settings-panel" class="panel hidden">
+      <h2>Settings</h2>
+      <form id="settings-form">
+        <div class="field-group">
+          <label for="ss-user">ScreenScraper Username</label>
+          <input type="text" id="ss-user" placeholder="Username" autocomplete="off" />
+        </div>
+        <div class="field-group">
+          <label for="ss-pass">ScreenScraper Password</label>
+          <input type="password" id="ss-pass" placeholder="Password" autocomplete="new-password" />
+        </div>
+        <div class="field-group">
+          <label for="sgdb-key">SteamGridDB API Key</label>
+          <input type="password" id="sgdb-key" placeholder="API Key" autocomplete="new-password" />
+        </div>
+        <div class="form-actions">
+          <button type="button" id="settings-close-btn" class="btn-outline">Close</button>
+          <button type="button" id="save-btn">Save</button>
+          <span id="status-msg"></span>
+        </div>
+      </form>
+    </section>
+
+    <!-- Step Flow -->
+    <div id="flow">
+      <nav class="step-nav">
+        <div class="step active" data-step="0">
+          <span class="step-num">1</span>
+          <span class="step-label">Scrape</span>
+        </div>
+        <div class="step-connector"></div>
+        <div class="step" data-step="1">
+          <span class="step-num">2</span>
+          <span class="step-label">Image Picker</span>
+        </div>
+        <div class="step-connector"></div>
+        <div class="step" data-step="2">
+          <span class="step-num">3</span>
+          <span class="step-label">Preview</span>
+        </div>
+      </nav>
+
+      <section id="step-0" class="step-content active">
+        <h2>Scrape</h2>
+        <p>ROM setup — coming in Phase 2.</p>
+      </section>
+
+      <section id="step-1" class="step-content">
+        <h2>Image Picker</h2>
+        <p>Image selection — coming in Phase 3.</p>
+      </section>
+
+      <section id="step-2" class="step-content">
+        <h2>Preview</h2>
+        <p>Export preview — coming in Phase 5.</p>
+      </section>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

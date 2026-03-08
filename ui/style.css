@@ -1,0 +1,238 @@
+/* ── CSS Variables ─────────────────────────────────────────── */
+:root {
+  /* Colors */
+  --color-bg:           #1a1a2e;
+  --color-surface:      #16213e;
+  --color-border:       #0f3460;
+  --color-accent:       #e94560;
+  --color-accent-hover: #c73652;
+  --color-text:         #e0e0e0;
+  --color-text-muted:   #888;
+  --color-success:      #4caf50;
+  --color-error:        #e94560;
+
+  /* Typography */
+  --font-family:   system-ui, -apple-system, sans-serif;
+  --font-size-sm:  12px;
+  --font-size-base: 14px;
+  --font-size-lg:  18px;
+
+  /* Layout */
+  --radius:        4px;
+  --header-height: 48px;
+}
+
+/* ── Reset ─────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+  background: var(--color-bg);
+  color: var(--color-text);
+  min-height: 100vh;
+}
+
+/* ── App Header ────────────────────────────────────────────── */
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--color-surface);
+  border-bottom: 2px solid var(--color-border);
+  height: var(--header-height);
+  padding: 0 20px;
+}
+
+.app-title {
+  font-size: var(--font-size-base);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--color-text);
+}
+
+.settings-btn {
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  padding: 5px 12px;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.settings-btn:hover,
+.settings-btn.active {
+  color: var(--color-text);
+  border-color: var(--color-text-muted);
+}
+
+/* ── Step Indicator ────────────────────────────────────────── */
+.step-nav {
+  display: flex;
+  align-items: center;
+  padding: 20px 24px 0;
+  gap: 0;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.step-num {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.2s, background 0.2s, color 0.2s;
+}
+
+.step-label {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  transition: color 0.2s;
+}
+
+.step.active .step-num {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+}
+
+.step.active .step-label {
+  color: var(--color-text);
+}
+
+.step.done .step-num {
+  background: var(--color-border);
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+.step-connector {
+  flex: 1;
+  height: 2px;
+  background: var(--color-border);
+  margin: 0 10px;
+  min-width: 32px;
+}
+
+/* ── Panel / Content Area ──────────────────────────────────── */
+.panel {
+  padding: 24px;
+  max-width: 560px;
+}
+
+.panel.hidden {
+  display: none;
+}
+
+.step-content {
+  display: none;
+  padding: 24px;
+  max-width: 560px;
+}
+
+.step-content.active {
+  display: block;
+}
+
+.btn-outline {
+  background: none !important;
+  border: 1px solid var(--color-text) !important;
+  color: var(--color-text) !important;
+}
+
+.btn-outline:hover:not(:disabled) {
+  background: rgba(224, 224, 224, 0.08) !important;
+}
+
+h2 {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  margin-bottom: 20px;
+  color: #fff;
+}
+
+/* ── Form ──────────────────────────────────────────────────── */
+.field-group {
+  margin-bottom: 16px;
+}
+
+label {
+  display: block;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+input[type="text"],
+input[type="password"] {
+  width: 100%;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  font-size: var(--font-size-base);
+  padding: 8px 12px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+input[type="text"]:focus,
+input[type="password"]:focus {
+  border-color: var(--color-accent);
+}
+
+.form-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 24px;
+}
+
+button[type="button"],
+button[type="submit"] {
+  background: var(--color-accent);
+  border: none;
+  border-radius: var(--radius);
+  color: #fff;
+  cursor: pointer;
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  padding: 9px 20px;
+  transition: background 0.15s;
+}
+
+button[type="button"]:hover:not(:disabled),
+button[type="submit"]:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Status Message ────────────────────────────────────────── */
+#status-msg {
+  font-size: var(--font-size-sm);
+}
+
+#status-msg.success { color: var(--color-success); }
+#status-msg.error   { color: var(--color-error); }
