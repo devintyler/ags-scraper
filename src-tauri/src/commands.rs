@@ -26,6 +26,12 @@ pub struct SearchResults {
 }
 
 #[derive(Serialize)]
+pub struct ClearCacheResult {
+    pub files_deleted: u64,
+    pub bytes_freed: u64,
+}
+
+#[derive(Serialize)]
 pub struct ConfigView {
     pub screenscraper_user: String,
     /// True if a password is stored; the plaintext is never sent to the frontend.
@@ -46,8 +52,8 @@ async fn load_sgdb_api_key() -> Result<SecretString, String> {
     config::decrypt(&cfg.steamgriddb.api_key_enc)
 }
 
-// load_config_cmd and save_config_cmd are sync commands invoked infrequently
-// (settings page open/save). The brief blocking I/O is acceptable here.
+// load_config_cmd and save_config_cmd use spawn_blocking to avoid holding the
+// async executor during file I/O and DPAPI calls (settings page open/save).
 
 #[tauri::command]
 pub fn load_config_cmd() -> Result<ConfigView, String> {
@@ -60,41 +66,45 @@ pub fn load_config_cmd() -> Result<ConfigView, String> {
 }
 
 #[tauri::command]
-pub fn save_config_cmd(
+pub async fn save_config_cmd(
     screenscraper_user: String,
     screenscraper_pass: String,
     steamgriddb_key: String,
 ) -> Result<(), String> {
-    // Wrap immediately so the plaintext bytes are zeroed when these drop.
-    let pass_secret = SecretString::new(screenscraper_pass);
-    let key_secret = SecretString::new(steamgriddb_key);
+    tokio::task::spawn_blocking(move || {
+        // Wrap immediately so the plaintext bytes are zeroed when these drop.
+        let pass_secret = SecretString::new(screenscraper_pass);
+        let key_secret = SecretString::new(steamgriddb_key);
 
-    // Load existing config to preserve last_output_dir and any credential blobs
-    // the user left blank (empty field = keep existing, not clear).
-    let existing = config::load_config().unwrap_or_default();
+        // Load existing config to preserve last_output_dir and any credential blobs
+        // the user left blank (empty field = keep existing, not clear).
+        let existing = config::load_config().unwrap_or_default();
 
-    let pass_enc = if pass_secret.expose_secret().is_empty() {
-        existing.screenscraper.password_enc
-    } else {
-        config::encrypt(pass_secret.expose_secret())?
-    };
+        let pass_enc = if pass_secret.expose_secret().is_empty() {
+            existing.screenscraper.password_enc
+        } else {
+            config::encrypt(pass_secret.expose_secret())?
+        };
 
-    let key_enc = if key_secret.expose_secret().is_empty() {
-        existing.steamgriddb.api_key_enc
-    } else {
-        config::encrypt(key_secret.expose_secret())?
-    };
+        let key_enc = if key_secret.expose_secret().is_empty() {
+            existing.steamgriddb.api_key_enc
+        } else {
+            config::encrypt(key_secret.expose_secret())?
+        };
 
-    config::save_config(&config::Config {
-        screenscraper: config::ScreenScraperConfig {
-            username: screenscraper_user,
-            password_enc: pass_enc,
-        },
-        steamgriddb: config::SteamGridDbConfig {
-            api_key_enc: key_enc,
-        },
-        ui: existing.ui,
+        config::save_config(&config::Config {
+            screenscraper: config::ScreenScraperConfig {
+                username: screenscraper_user,
+                password_enc: pass_enc,
+            },
+            steamgriddb: config::SteamGridDbConfig {
+                api_key_enc: key_enc,
+            },
+            ui: existing.ui,
+        })
     })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -142,6 +152,56 @@ pub async fn search_game(
         matched_game: Some(matched),
         game_candidates,
     })
+}
+
+#[tauri::command]
+pub async fn download_and_cache(
+    http: tauri::State<'_, AppClient>,
+    url: String,
+) -> Result<String, String> {
+    let path = crate::cache::cache_path(&url)?;
+    if path.exists() {
+        return Ok(path.to_string_lossy().into_owned());
+    }
+    crate::cache::ensure_cache_dir()?;
+    let bytes = http
+        .0
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .error_for_status()
+        .map_err(|e| e.to_string())?
+        .bytes()
+        .await
+        .map_err(|e| e.to_string())?;
+    // A concurrent request may have written the file while we were downloading;
+    // overwriting with identical bytes is safe, but skip the write if possible.
+    if !path.exists() {
+        tokio::fs::write(&path, &bytes)
+            .await
+            .map_err(|e| format!("Failed to write cache: {e}"))?;
+    }
+    Ok(path.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+pub fn clear_cache() -> Result<ClearCacheResult, String> {
+    let dir = crate::cache::cache_dir()?;
+    if !dir.exists() {
+        return Ok(ClearCacheResult { files_deleted: 0, bytes_freed: 0 });
+    }
+    let mut files_deleted = 0u64;
+    let mut bytes_freed = 0u64;
+    for entry in std::fs::read_dir(&dir).map_err(|e| e.to_string())?.flatten() {
+        if let Ok(meta) = entry.metadata() {
+            if meta.is_file() && std::fs::remove_file(entry.path()).is_ok() {
+                files_deleted += 1;
+                bytes_freed += meta.len();
+            }
+        }
+    }
+    Ok(ClearCacheResult { files_deleted, bytes_freed })
 }
 
 #[tauri::command]

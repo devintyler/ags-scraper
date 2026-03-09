@@ -8,7 +8,7 @@ name = "gsp_scraper_lib"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -17,7 +17,8 @@ base64 = "0.22"
 zeroize = "1"
 secrecy = "0.8"
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+sha2 = "0.10"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs"] }
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62", features = [

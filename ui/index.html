@@ -10,7 +10,14 @@
     <!-- App Header -->
     <header class="app-header">
       <span class="app-title">GSP Scraper</span>
-      <button id="settings-btn" class="settings-btn" aria-expanded="false" aria-controls="settings-panel">Settings</button>
+      <button
+        id="settings-btn"
+        class="settings-btn"
+        aria-expanded="false"
+        aria-controls="settings-panel"
+      >
+        Settings
+      </button>
     </header>
 
     <!-- Settings Panel -->
@@ -19,18 +26,35 @@
       <form id="settings-form" onsubmit="return false;">
         <div class="field-group">
           <label for="ss-user">ScreenScraper Username</label>
-          <input type="text" id="ss-user" placeholder="Username" autocomplete="off" />
+          <input
+            type="text"
+            id="ss-user"
+            placeholder="Username"
+            autocomplete="off"
+          />
         </div>
         <div class="field-group">
           <label for="ss-pass">ScreenScraper Password</label>
-          <input type="password" id="ss-pass" placeholder="Password" autocomplete="new-password" />
+          <input
+            type="password"
+            id="ss-pass"
+            placeholder="Password"
+            autocomplete="new-password"
+          />
         </div>
         <div class="field-group">
           <label for="sgdb-key">SteamGridDB API Key</label>
-          <input type="password" id="sgdb-key" placeholder="API Key" autocomplete="new-password" />
+          <input
+            type="password"
+            id="sgdb-key"
+            placeholder="API Key"
+            autocomplete="new-password"
+          />
         </div>
         <div class="form-actions">
-          <button type="button" id="settings-close-btn" class="btn-outline">Close</button>
+          <button type="button" id="settings-close-btn" class="btn-outline">
+            Close
+          </button>
           <button type="button" id="save-btn">Save</button>
           <span id="status-msg"></span>
         </div>
@@ -57,29 +81,58 @@
       </nav>
 
       <section id="step-0" class="step-content active">
-        <h2>Scrape</h2>
         <div class="field-group file-picker-group">
-          <label for="rom-path">ROM File <span class="label-muted">(filename used for search &amp; output — not read or uploaded)</span></label>
+          <label for="rom-path"
+            >ROM File
+            <span class="label-muted"
+              >(filename used for search &amp; output — not read or
+              uploaded)</span
+            ></label
+          >
           <div class="file-picker-row">
-            <input type="text" id="rom-path" placeholder="Select a ROM file…" readonly />
-            <button type="button" id="rom-browse-btn" class="btn-outline">Select</button>
+            <input
+              type="text"
+              id="rom-path"
+              placeholder="Select a ROM file…"
+              readonly
+            />
+            <button type="button" id="rom-browse-btn" class="btn-outline">
+              Select
+            </button>
           </div>
         </div>
         <div class="field-group file-picker-group">
           <label for="output-dir">Output Directory</label>
           <div class="file-picker-row">
-            <input type="text" id="output-dir" placeholder="Select output folder…" readonly />
-            <button type="button" id="output-browse-btn" class="btn-outline">Browse</button>
+            <input
+              type="text"
+              id="output-dir"
+              placeholder="Select output folder…"
+              readonly
+            />
+            <button type="button" id="output-browse-btn" class="btn-outline">
+              Browse
+            </button>
           </div>
         </div>
         <div class="field-group">
           <label for="search-term">Search Term</label>
-          <input type="text" id="search-term" placeholder="Auto-filled from ROM filename" />
+          <input
+            type="text"
+            id="search-term"
+            placeholder="Auto-filled from ROM filename"
+          />
         </div>
         <div class="field-group">
           <label>Source</label>
           <label class="checkbox-label">
-            <input type="checkbox" id="src-sgdb" checked disabled title="Only SteamGridDB is available in this version" />
+            <input
+              type="checkbox"
+              id="src-sgdb"
+              checked
+              disabled
+              title="Only SteamGridDB is available in this version"
+            />
             SteamGridDB
           </label>
         </div>
@@ -90,13 +143,119 @@
         <div id="scrape-result" class="scrape-result hidden"></div>
       </section>
 
-      <section id="step-1" class="step-content">
-        <h2>Image Picker</h2>
-        <p>Image selection — coming in Phase 3.</p>
+      <section id="step-1" class="step-content picker-content">
+        <div class="picker-header">
+          <button type="button" id="picker-back-btn">Back to Scraper</button>
+        </div>
+
+        <div class="picker-tabs" role="tablist">
+          <button
+            type="button"
+            class="picker-tab active"
+            data-tab="boxart"
+            role="tab"
+            aria-selected="true"
+          >
+            Boxart
+          </button>
+          <button
+            type="button"
+            class="picker-tab"
+            data-tab="screenshot"
+            role="tab"
+            aria-selected="false"
+          >
+            Screenshot
+          </button>
+          <button
+            type="button"
+            class="picker-tab"
+            data-tab="title"
+            role="tab"
+            aria-selected="false"
+          >
+            Title
+          </button>
+          <button
+            type="button"
+            class="picker-tab"
+            data-tab="menu"
+            role="tab"
+            aria-selected="false"
+          >
+            Menu
+          </button>
+        </div>
+
+        <div id="tab-panel-boxart" class="tab-panel active">
+          <div class="tab-toolbar">
+            <span id="tab-count-boxart" class="tab-count"></span>
+            <div class="tab-actions">
+              <button type="button" class="picker-skip-btn" data-tab="boxart">
+                Skip
+              </button>
+              <button type="button" class="picker-next-sel-btn">
+                Next Selection
+              </button>
+            </div>
+          </div>
+          <div id="grid-boxart" class="image-grid"></div>
+        </div>
+
+        <div id="tab-panel-screenshot" class="tab-panel">
+          <div class="tab-toolbar">
+            <span id="tab-count-screenshot" class="tab-count"></span>
+            <div class="tab-actions">
+              <button
+                type="button"
+                class="picker-skip-btn"
+                data-tab="screenshot"
+              >
+                Skip
+              </button>
+              <button type="button" class="picker-next-sel-btn">
+                Next Selection
+              </button>
+            </div>
+          </div>
+          <div id="grid-screenshot" class="image-grid"></div>
+        </div>
+
+        <div id="tab-panel-title" class="tab-panel">
+          <div class="tab-toolbar">
+            <span id="tab-count-title" class="tab-count"></span>
+            <div class="tab-actions">
+              <button type="button" class="picker-skip-btn" data-tab="title">
+                Skip
+              </button>
+              <button type="button" class="picker-next-sel-btn">
+                Next Selection
+              </button>
+            </div>
+          </div>
+          <div id="grid-title" class="image-grid"></div>
+        </div>
+
+        <div id="tab-panel-menu" class="tab-panel">
+          <div class="tab-toolbar">
+            <span id="tab-count-menu" class="tab-count"></span>
+            <div class="tab-actions">
+              <button type="button" class="picker-skip-btn" data-tab="menu">
+                Skip
+              </button>
+              <button type="button" class="picker-next-sel-btn">
+                Next Selection
+              </button>
+            </div>
+          </div>
+          <div id="grid-menu" class="image-grid"></div>
+        </div>
       </section>
 
       <section id="step-2" class="step-content">
-        <h2>Preview</h2>
+        <div class="preview-header">
+          <button type="button" id="preview-back-btn">Back to Selection</button>
+        </div>
         <p>Export preview — coming in Phase 5.</p>
       </section>
     </div>
