@@ -5,11 +5,12 @@ compile_error!(
      See README for details."
 );
 
+mod cache;
 mod commands;
 mod config;
 mod steamgriddb;
 
-use commands::{fetch_sgdb_images, load_config_cmd, save_config_cmd, search_game};
+use commands::{clear_cache, download_and_cache, fetch_sgdb_images, load_config_cmd, save_config_cmd, search_game};
 
 /// Shared HTTP client held in Tauri state so all commands reuse the connection pool.
 pub struct AppClient(pub reqwest::Client);
@@ -28,6 +29,8 @@ pub fn run() {
             save_config_cmd,
             search_game,
             fetch_sgdb_images,
+            download_and_cache,
+            clear_cache,
         ])
         .run(tauri::generate_context!())
         .expect(

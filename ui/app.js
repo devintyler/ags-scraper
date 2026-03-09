@@ -1,4 +1,15 @@
-const { invoke } = window.__TAURI__.core;
+const { invoke, convertFileSrc } = window.__TAURI__.core;
+const { open: openDialog } = window.__TAURI__.dialog;
+
+// ── Constants ──────────────────────────────────────────────────
+// Source identifiers — must match the values set in the Rust backend.
+const SOURCE_STEAMGRIDDB   = 'SteamGridDB';
+const SOURCE_SCREENSCRAPER = 'screenscraper';
+// Sentinel stored in pickerSession.selections when the user skips a tab.
+const SELECTION_SKIP = 'skip';
+const SAVED_PLACEHOLDER = 'Saved — paste to overwrite';
+const TAB_NAMES = { boxart: 'Boxart', screenshot: 'Screenshot', title: 'Title', menu: 'Menu' };
+const TABS = ['boxart', 'screenshot', 'title', 'menu'];
 
 // ── Cached DOM elements ────────────────────────────────────────
 const settingsBtn    = document.getElementById('settings-btn');
@@ -51,8 +62,6 @@ function setStatus(msg, isError) {
 // Credential fields never hold the real value — they're either empty (waiting
 // for input) or show a placeholder indicating something is already saved.
 // Saved state is tracked via data-is-saved, not the placeholder text itself.
-const SAVED_PLACEHOLDER = 'Saved — paste to overwrite';
-
 function setCredentialField(inputEl, isSaved) {
   inputEl.value = '';
   inputEl.placeholder = isSaved ? SAVED_PLACEHOLDER : inputEl.dataset.defaultPlaceholder;
@@ -94,7 +103,7 @@ function updateScrapeBtn() {
 }
 
 document.getElementById('rom-browse-btn').addEventListener('click', async () => {
-  const selected = await window.__TAURI__.dialog.open({
+  const selected = await openDialog({
     title: 'Select ROM',
     multiple: false,
     filters: [{ name: 'ROM', extensions: ['zip', 'rom', 'bin', 'cue', 'iso'] }],
@@ -117,15 +126,16 @@ document.getElementById('rom-browse-btn').addEventListener('click', async () => 
 });
 
 document.getElementById('output-browse-btn').addEventListener('click', async () => {
-  const selected = await window.__TAURI__.dialog.open({ directory: true });
+  const selected = await openDialog({ directory: true });
   if (!selected) return;
   outputDirInput.value = typeof selected === 'string' ? selected : selected[0];
   updateScrapeBtn();
 });
 
 // If the user manually edits the search term, mark it so auto-fill stops overwriting.
+// Clearing the field does not reset the flag — pick a new ROM to re-enable auto-fill.
 document.getElementById('search-term').addEventListener('input', function () {
-  this.dataset.userEdited = this.value !== '' ? '1' : '';
+  if (this.value !== '') this.dataset.userEdited = '1';
 });
 
 // ── Scrape result renderer ─────────────────────────────────────
@@ -162,8 +172,10 @@ function renderScrapeResult(results) {
       `Title: ${results.title.length} &nbsp;|&nbsp; ` +
       `Menu: ${results.menu.length} &nbsp;|&nbsp; ` +
       `<span class="label-muted">Screenshot: 0 (requires ScreenScraper)</span></div>` +
-      altHtml;
+      altHtml +
+      `<div class="pick-images-row"><button type="button" id="pick-images-btn">Pick Images →</button></div>`;
     scrapeResult.className = 'scrape-result success';
+    document.getElementById('pick-images-btn').addEventListener('click', () => openPicker(results));
   }
   scrapeResult.classList.remove('hidden');
 }
@@ -178,6 +190,7 @@ scrapeResult.addEventListener('click', async (e) => {
   if (!btn) return;
 
   const gameId = parseInt(btn.dataset.id, 10);
+  if (Number.isNaN(gameId)) return;
   // dataset.name is decoded by the HTML parser, so it holds the raw game name.
   const gameName = btn.dataset.name;
 
@@ -254,6 +267,198 @@ scrapeBtn.addEventListener('click', async () => {
   } finally {
     if (scrapeSession.seq === seq) scrapeBtn.disabled = false;
   }
+});
+
+// ── Picker State ───────────────────────────────────────────────
+const pickerSession = {
+  results: null,
+  selections: { boxart: null, screenshot: null, title: null, menu: null },
+  activeTab: 'boxart',
+};
+
+// ── Navigate helper ────────────────────────────────────────────
+function navigate(step) {
+  document.querySelectorAll('.step-content').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.step[data-step]').forEach(s => {
+    const n = parseInt(s.dataset.step, 10);
+    s.classList.remove('active', 'done');
+    if (n < step) s.classList.add('done');
+    else if (n === step) s.classList.add('active');
+  });
+  document.getElementById(`step-${step}`).classList.add('active');
+}
+
+// ── Picker functions ───────────────────────────────────────────
+function resetPickerUI() {
+  pickerSession.selections = { boxart: null, screenshot: null, title: null, menu: null };
+  pickerSession.activeTab = 'boxart';
+  for (const tab of TABS) {
+    const grid = document.getElementById(`grid-${tab}`);
+    if (grid) grid.innerHTML = '';
+    const countEl = document.getElementById(`tab-count-${tab}`);
+    if (countEl) countEl.textContent = '';
+  }
+}
+
+function openPicker(results) {
+  pickerSession.results = results;
+  resetPickerUI();
+  // Auto-skip tabs with no candidates
+  for (const tab of ['boxart', 'title', 'menu']) {
+    if (!results[tab] || results[tab].length === 0) pickerSession.selections[tab] = SELECTION_SKIP;
+  }
+  renderPickerTabs();
+  navigate(1);
+  activatePickerTab('boxart');
+}
+
+function renderPickerTabs() {
+  let allResolved = true;
+  for (const tab of TABS) {
+    const resolved = pickerSession.selections[tab] !== null;
+    if (!resolved) allResolved = false;
+    const btn = document.querySelector(`.picker-tab[data-tab="${tab}"]`);
+    if (btn) {
+      btn.textContent = TAB_NAMES[tab] + (resolved ? ' ✓' : '');
+      btn.classList.toggle('resolved', resolved);
+    }
+  }
+  const label = allResolved ? 'Preview' : 'Next Selection';
+  const currentResolved = pickerSession.selections[pickerSession.activeTab] !== null;
+  document.querySelectorAll('.picker-next-sel-btn').forEach(btn => {
+    btn.textContent = label;
+    btn.disabled = !currentResolved;
+  });
+}
+
+function activatePickerTab(tab) {
+  pickerSession.activeTab = tab;
+  renderPickerTabs();
+  document.querySelectorAll('.picker-tab').forEach(b => {
+    const isActive = b.dataset.tab === tab;
+    b.classList.toggle('active', isActive);
+    b.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  });
+  document.querySelectorAll('.tab-panel').forEach(p => {
+    p.classList.toggle('active', p.id === `tab-panel-${tab}`);
+  });
+  populateGrid(tab);
+}
+
+function populateGrid(tab) {
+  const grid = document.getElementById(`grid-${tab}`);
+  if (!grid || grid.children.length > 0) return;
+
+  const candidates = pickerSession.results ? pickerSession.results[tab] : [];
+  const countEl = document.getElementById(`tab-count-${tab}`);
+
+  if (tab === 'screenshot' || !candidates || candidates.length === 0) {
+    grid.innerHTML = '<p class="grid-empty">No images available for this tab.</p>';
+    if (countEl) countEl.textContent = '';
+    return;
+  }
+
+  if (countEl) countEl.textContent = `${candidates.length} image${candidates.length !== 1 ? 's' : ''}`;
+
+  for (const candidate of candidates) {
+    const cell = document.createElement('div');
+    cell.className = 'grid-cell loading';
+    const badge = document.createElement('span');
+    badge.className = 'source-badge';
+    badge.textContent = candidate.source === SOURCE_STEAMGRIDDB ? 'SGDB' : 'SS';
+    cell.appendChild(badge);
+    grid.appendChild(cell);
+    downloadAndShowImage(cell, candidate.url, tab);
+  }
+}
+
+async function downloadAndShowImage(cell, url, tab) {
+  try {
+    const localPath = await invoke('download_and_cache', { url });
+    const assetUrl = convertFileSrc(localPath);
+    const img = document.createElement('img');
+    img.alt = '';
+    img.onload = () => {
+      cell.classList.remove('loading');
+      cell.appendChild(img);
+    };
+    img.onerror = () => {
+      cell.classList.remove('loading');
+      cell.classList.add('load-error');
+    };
+    img.src = assetUrl;
+    cell.addEventListener('click', () => selectImage(tab, url, localPath, cell));
+  } catch {
+    cell.classList.remove('loading');
+    cell.classList.add('load-error');
+  }
+}
+
+function selectImage(tab, url, localPath, cell) {
+  const grid = document.getElementById(`grid-${tab}`);
+  if (grid) grid.querySelectorAll('.grid-cell.selected').forEach(c => c.classList.remove('selected'));
+  cell.classList.add('selected');
+  pickerSession.selections[tab] = { url, localPath };
+  renderPickerTabs();
+}
+
+// ── Picker tab buttons — use delegation so textContent updates don't matter ──
+document.querySelector('.picker-tabs').addEventListener('click', (e) => {
+  const btn = e.target.closest('.picker-tab');
+  if (btn) activatePickerTab(btn.dataset.tab);
+});
+
+// ── Shared helper: jump to the next tab that hasn't been resolved ─
+function advanceToNextUnresolved(fromTab) {
+  const tabs = TABS;
+  const start = (tabs.indexOf(fromTab) + 1) % tabs.length;
+  for (let i = 0; i < tabs.length; i++) {
+    const next = tabs[(start + i) % tabs.length];
+    if (pickerSession.selections[next] === null) {
+      activatePickerTab(next);
+      return;
+    }
+  }
+}
+
+// ── Skip + Next Selection — delegate from step-1 section ───────
+document.getElementById('step-1').addEventListener('click', (e) => {
+  const skipBtn = e.target.closest('.picker-skip-btn');
+  if (skipBtn) {
+    const tab = skipBtn.dataset.tab;
+    const grid = document.getElementById(`grid-${tab}`);
+    if (grid) grid.querySelectorAll('.grid-cell.selected').forEach(c => c.classList.remove('selected'));
+    pickerSession.selections[tab] = SELECTION_SKIP;
+    renderPickerTabs();
+    advanceToNextUnresolved(tab);
+    return;
+  }
+
+  const nextSelBtn = e.target.closest('.picker-next-sel-btn');
+  if (nextSelBtn) {
+    const allResolved = TABS.every(
+      t => pickerSession.selections[t] !== null
+    );
+    if (allResolved) {
+      navigate(2);
+    } else {
+      advanceToNextUnresolved(pickerSession.activeTab);
+    }
+  }
+});
+
+// ── Preview back button ────────────────────────────────────────
+document.getElementById('preview-back-btn').addEventListener('click', () => {
+  navigate(1);
+  activatePickerTab(pickerSession.activeTab);
+});
+
+// ── Picker back button ─────────────────────────────────────────
+document.getElementById('picker-back-btn').addEventListener('click', () => {
+  pickerSession.results = null;
+  resetPickerUI();
+  renderPickerTabs();
+  navigate(0);
 });
 
 // ── Save settings ─────────────────────────────────────────────

@@ -360,3 +360,236 @@ button.alt-match-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+.pick-images-row {
+  margin-top: 12px;
+}
+
+/* ── Image Picker ──────────────────────────────────────────── */
+.picker-content {
+  max-width: 860px;
+}
+
+.picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+/* ── Picker tabs ───────────────────────────────────────────── */
+.picker-tabs {
+  display: flex;
+  border-bottom: 2px solid var(--color-border);
+  margin-bottom: 16px;
+  gap: 0;
+}
+
+button.picker-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  font-weight: 400;
+  margin-bottom: -2px;
+  padding: 8px 18px;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+button.picker-tab:hover:not(:disabled) {
+  background: none;
+  color: var(--color-text);
+}
+
+button.picker-tab.active {
+  border-bottom-color: var(--color-accent);
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+button.picker-tab.resolved {
+  color: var(--color-success);
+}
+
+button.picker-tab.resolved.active {
+  border-bottom-color: var(--color-success);
+}
+
+/* ── Tab panels ────────────────────────────────────────────── */
+.tab-panel {
+  display: none;
+}
+
+.tab-panel.active {
+  display: block;
+}
+
+.tab-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.tab-count {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+/* ── Image grid ────────────────────────────────────────────── */
+.image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.grid-cell {
+  aspect-ratio: 3 / 4;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  overflow: hidden;
+  position: relative;
+  transition: border-color 0.15s;
+  background: var(--color-surface);
+}
+
+.grid-cell:hover {
+  border-color: var(--color-text-muted);
+}
+
+.grid-cell.selected {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 1px var(--color-accent);
+}
+
+.grid-cell.load-error {
+  border-color: var(--color-error);
+  opacity: 0.5;
+  cursor: default;
+}
+
+.grid-cell img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+/* Shimmer loading animation */
+.grid-cell.loading::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 25%,
+    rgba(255, 255, 255, 0.07) 50%,
+    transparent 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .grid-cell.loading::after {
+    animation: none;
+    background: rgba(255, 255, 255, 0.05);
+  }
+}
+
+/* Source badge */
+.source-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(0, 0, 0, 0.65);
+  border-radius: var(--radius);
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 2px 5px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Title/logo tab: landscape aspect ratio */
+#tab-panel-title .grid-cell {
+  aspect-ratio: 16 / 3;
+}
+
+.grid-empty {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  padding: 24px 0;
+}
+
+/* ── Muted secondary buttons — alt-match-btn look via ID/class ─ */
+#settings-close-btn,
+#picker-back-btn,
+#preview-back-btn {
+  background: none;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
+
+#settings-close-btn:hover:not(:disabled),
+#picker-back-btn:hover:not(:disabled),
+#preview-back-btn:hover:not(:disabled) {
+  background: none;
+  border-color: var(--color-accent);
+  color: var(--color-text);
+}
+
+/* Skip — compact, matches alt-match-btn exactly */
+button.picker-skip-btn {
+  background: none;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: 400;
+  padding: 3px 10px;
+}
+
+button.picker-skip-btn:hover:not(:disabled) {
+  background: none;
+  border-color: var(--color-accent);
+  color: var(--color-text);
+}
+
+/* Next Selection / Preview — accent primary, same compact size as Skip */
+button.picker-next-sel-btn {
+  font-size: var(--font-size-sm);
+  padding: 3px 10px;
+}
+
+/* Tab toolbar action group */
+.tab-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Picker/Preview headers: back button left, h2 centered */
+.picker-header h2,
+.preview-header h2 {
+  margin-bottom: 0;
+  flex: 1;
+  text-align: center;
+}
+
+.preview-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 20px;
+}
