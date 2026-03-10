@@ -8,14 +8,20 @@ compile_error!(
 mod cache;
 mod commands;
 mod config;
+mod image_processing;
 mod steamgriddb;
 
-use commands::{clear_cache, download_and_cache, fetch_sgdb_images, load_config_cmd, save_config_cmd, search_game};
+use commands::{
+    cleanup_temp_dir, clear_cache, download_and_cache, fetch_sgdb_images, load_config_cmd,
+    process_image, save_config_cmd, search_game,
+};
 
 /// Shared HTTP client held in Tauri state so all commands reuse the connection pool.
 pub struct AppClient(pub reqwest::Client);
 
 pub fn run() {
+    image_processing::cleanup_temp_dir();
+
     let http_client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .build()
@@ -31,11 +37,18 @@ pub fn run() {
             fetch_sgdb_images,
             download_and_cache,
             clear_cache,
+            process_image,
+            cleanup_temp_dir,
         ])
-        .run(tauri::generate_context!())
+        .build(tauri::generate_context!())
         .expect(
             "Failed to start application. \
              Ensure WebView2 Runtime is installed: \
              https://developer.microsoft.com/en-us/microsoft-edge/webview2/",
-        );
+        )
+        .run(|_app, event| {
+            if let tauri::RunEvent::Exit = event {
+                image_processing::cleanup_temp_dir();
+            }
+        });
 }

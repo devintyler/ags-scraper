@@ -205,6 +205,24 @@ pub fn clear_cache() -> Result<ClearCacheResult, String> {
 }
 
 #[tauri::command]
+pub async fn process_image(
+    cache_path: String,
+    image_type: crate::image_processing::ImageType,
+    crop_preset: Option<crate::image_processing::CropPreset>,
+) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || {
+        crate::image_processing::process_image(&cache_path, image_type, crop_preset)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub fn cleanup_temp_dir() {
+    crate::image_processing::cleanup_temp_dir();
+}
+
+#[tauri::command]
 pub async fn fetch_sgdb_images(
     http: tauri::State<'_, AppClient>,
     game_id: u64,
