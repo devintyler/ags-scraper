@@ -27,6 +27,7 @@ function openSettings() {
   flow.classList.add('hidden');
   settingsBtn.classList.add('active');
   settingsBtn.setAttribute('aria-expanded', 'true');
+  clearCacheStatus();
 }
 
 function closeSettings() {
@@ -34,6 +35,7 @@ function closeSettings() {
   flow.classList.remove('hidden');
   settingsBtn.classList.remove('active');
   settingsBtn.setAttribute('aria-expanded', 'false');
+  clearCacheStatus();
 }
 
 settingsBtn.addEventListener('click', () => {
@@ -460,6 +462,8 @@ document.getElementById('step-1').addEventListener('click', (e) => {
 const IMAGE_TYPE_MAP = { boxart: 'Boxart', screenshot: 'Screenshot', title: 'Title', menu: 'Menu' };
 // Output pixel dimensions per type — used to size the preview container so its
 // shape always matches the file that will be written.
+// Note: screenshot is a maximum bounding box (output may be smaller if the
+// source image was already within bounds), so the container is an upper bound.
 const OUTPUT_DIMS = {
   boxart:     { w: 236, h: 322 },
   screenshot: { w: 362, h: 278 },
@@ -656,6 +660,53 @@ document.getElementById('picker-back-btn').addEventListener('click', () => {
   resetPickerUI();
   renderPickerTabs();
   navigate(0);
+});
+
+// ── Cache management ───────────────────────────────────────────
+function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function setCacheStatus(msg, isError) {
+  const el = document.getElementById('cache-status');
+  el.textContent = msg;
+  el.className = msg ? (isError ? 'error' : 'success') : '';
+}
+
+function clearCacheStatus() {
+  setCacheStatus('', false);
+}
+
+function setClearBtnsDisabled(disabled) {
+  document.getElementById('clear-cache-btn').disabled = disabled;
+  document.getElementById('clear-temp-btn').disabled = disabled;
+}
+
+document.getElementById('clear-cache-btn').addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  setClearBtnsDisabled(true);
+  try {
+    const result = await invoke('clear_cache');
+    const msg = result.files_deleted === 0
+      ? 'Downloaded image cache is already empty'
+      : `Cleared ${result.files_deleted} file${result.files_deleted !== 1 ? 's' : ''} (${formatBytes(result.bytes_freed)} freed)`;
+    setCacheStatus(msg, false);
+  } catch (err) {
+    setCacheStatus('Failed to clear cache: ' + err, true);
+  } finally {
+    setClearBtnsDisabled(false);
+  }
+});
+
+document.getElementById('clear-temp-btn').addEventListener('click', async () => {
+  setClearBtnsDisabled(true);
+  // cleanup_temp_dir returns no value and silently ignores errors on the Rust
+  // side, so this invoke always resolves — there is no catch path to handle.
+  await invoke('cleanup_temp_dir');
+  setCacheStatus('Preview temp files cleared', false);
+  setClearBtnsDisabled(false);
 });
 
 // ── Save settings ─────────────────────────────────────────────

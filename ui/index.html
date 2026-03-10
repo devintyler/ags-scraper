@@ -59,6 +59,27 @@
           <span id="status-msg"></span>
         </div>
       </form>
+
+      <hr class="settings-divider" />
+
+      <div class="settings-section">
+        <h3 class="settings-section-title">Cache</h3>
+        <div class="cache-row">
+          <div class="cache-row-info">
+            <span class="cache-row-label">Downloaded images</span>
+            <span class="cache-row-desc">Thumbnails fetched from SteamGridDB and ScreenScraper</span>
+          </div>
+          <button type="button" id="clear-cache-btn" class="btn-outline btn-sm">Clear</button>
+        </div>
+        <div class="cache-row">
+          <div class="cache-row-info">
+            <span class="cache-row-label">Processed previews</span>
+            <span class="cache-row-desc">Resized images generated during scraping sessions</span>
+          </div>
+          <button type="button" id="clear-temp-btn" class="btn-outline btn-sm">Clear</button>
+        </div>
+        <span id="cache-status"></span>
+      </div>
     </section>
 
     <!-- Step Flow -->
