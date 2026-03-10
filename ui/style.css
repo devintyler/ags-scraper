@@ -665,7 +665,7 @@ button.picker-next-sel-btn {
 
 /* ── Utility ───────────────────────────────────────────────── */
 .hidden {
-  display: none;
+  display: none !important;
 }
 
 /* ── Crop Preset Buttons ───────────────────────────────────── */
@@ -796,4 +796,58 @@ button.crop-preset-btn.active:hover:not(:disabled) {
   align-items: center;
   gap: 14px;
   margin-top: 24px;
+}
+
+/* ── Export — overwrite warning ────────────────────────────── */
+.overwrite-warning {
+  margin-top: 16px;
+  padding: 14px 16px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius);
+}
+
+.overwrite-warning-msg {
+  color: var(--color-error);
+  font-size: var(--font-size-sm);
+  margin-bottom: 8px;
+}
+
+#overwrite-conflict-list {
+  list-style: disc;
+  padding-left: 20px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  margin-bottom: 12px;
+  word-break: break-all;
+}
+
+.overwrite-warning-actions {
+  display: flex;
+  gap: 10px;
+}
+
+/* ── Export — success ──────────────────────────────────────── */
+.export-success {
+  margin-top: 16px;
+  padding: 14px 16px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-success);
+  border-radius: var(--radius);
+}
+
+.export-success-msg {
+  color: var(--color-success);
+  font-size: var(--font-size-sm);
+  margin-bottom: 12px;
+  word-break: break-all;
+}
+
+#export-success-dir {
+  font-weight: 600;
+}
+
+#export-status {
+  color: var(--color-error);
+  font-size: var(--font-size-sm);
 }

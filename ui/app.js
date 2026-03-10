@@ -17,9 +17,10 @@ const settingsPanel  = document.getElementById('settings-panel');
 const flow           = document.getElementById('flow');
 const romPathInput   = document.getElementById('rom-path');
 const outputDirInput = document.getElementById('output-dir');
-const scrapeBtn      = document.getElementById('scrape-btn');
-const scrapeStatus   = document.getElementById('scrape-status');
-const scrapeResult   = document.getElementById('scrape-result');
+const scrapeBtn        = document.getElementById('scrape-btn');
+const scrapeStatus     = document.getElementById('scrape-status');
+const scrapeResult     = document.getElementById('scrape-result');
+const previewActionsEl = document.querySelector('.preview-actions');
 
 // ── Settings toggle ───────────────────────────────────────────
 function openSettings() {
@@ -534,6 +535,7 @@ function buildPreviewCol(tab) {
 }
 
 function renderPreview() {
+  updateConfirmBtn(); // reset to disabled before processing starts
   const container = document.getElementById('preview-columns');
   container.innerHTML = '';
   for (const tab of TABS) {
@@ -574,6 +576,8 @@ async function triggerPreviewProcess(tab) {
   if (!col) return;
 
   const seq = ++pickerSession.processSeq[tab];
+  pickerSession.processedPaths[tab] = null; // clear stale path; button disabled until new one arrives
+  updateConfirmBtn();
 
   const spinnerEl = col.querySelector('.preview-col-spinner');
   const imgEl = document.getElementById(`preview-col-img-${tab}`);
@@ -594,6 +598,7 @@ async function triggerPreviewProcess(tab) {
     if (pickerSession.processSeq[tab] !== seq) return; // stale — a newer call superseded this one
 
     pickerSession.processedPaths[tab] = tempPath;
+    updateConfirmBtn();
     if (imgEl) {
       imgEl.onload = () => {
         if (spinnerEl) spinnerEl.classList.add('hidden');
@@ -629,6 +634,7 @@ async function triggerPreviewProcess(tab) {
       errEl.textContent = 'Processing failed';
       imgWrap.appendChild(errEl);
     }
+    updateConfirmBtn();
     console.error('process_image failed:', err);
   }
 }
@@ -641,16 +647,151 @@ document.getElementById('preview-columns').addEventListener('click', (e) => {
   document.querySelectorAll(`.preview-col[data-tab="${tab}"] .crop-preset-btn`)
     .forEach(b => b.classList.toggle('active', b.dataset.preset === preset));
   pickerSession.cropPresets[tab] = preset;
+  resetExportState();
   triggerPreviewProcess(tab);
 });
+
+// ── Export helpers ─────────────────────────────────────────────
+// Captures the export payload when an overwrite conflict is detected, so the
+// overwrite-confirm handler uses the same paths as the conflict check.
+let pendingExport = null;
+
+function getRomName() {
+  const basename = romPathInput.value.split(/[\\/]/).pop();
+  return basename.replace(/\.[^.]+$/, '');
+}
+
+function buildExportPaths() {
+  const p = pickerSession.processedPaths;
+  return {
+    boxart:     p.boxart      ?? null,
+    screenshot: p.screenshot  ?? null,
+    title:      p.title       ?? null,
+    menu:       p.menu        ?? null,
+  };
+}
+
+function updateConfirmBtn() {
+  const btn = document.getElementById('confirm-save-btn');
+  const allReady = TABS.every(tab => {
+    const sel = pickerSession.selections[tab];
+    if (!sel || sel === SELECTION_SKIP) return true; // skipped tabs don't need a path
+    return pickerSession.processedPaths[tab] !== null;
+  });
+  btn.disabled = !allReady;
+}
+
+function showExportError(msg) {
+  document.getElementById('export-status').textContent = msg;
+}
+
+function clearExportStatus() {
+  document.getElementById('export-status').textContent = '';
+}
+
+function resetExportState() {
+  pendingExport = null;
+  document.getElementById('overwrite-warning').classList.add('hidden');
+  document.getElementById('export-success').classList.add('hidden');
+  previewActionsEl.classList.remove('hidden');
+  clearExportStatus();
+  updateConfirmBtn();
+}
+
+function showExportSuccess(outputDir) {
+  document.getElementById('export-success-dir').textContent = outputDir;
+  document.getElementById('export-success').classList.remove('hidden');
+  previewActionsEl.classList.add('hidden');
+}
+
+async function doExport(selections, romName, outputDir) {
+  try {
+    const report = await invoke('export_images', { selections, romName, outputDir, overwrite: true });
+    const failed = report.results.filter(r => !r.success);
+    if (failed.length > 0) {
+      const msgs = failed.map(r => `${r.image_type}: ${r.error}`).join('; ');
+      showExportError('Some files failed to save: ' + msgs);
+      previewActionsEl.classList.remove('hidden');
+      updateConfirmBtn();
+    } else {
+      showExportSuccess(outputDir);
+    }
+  } catch (err) {
+    showExportError('Export failed: ' + err);
+    previewActionsEl.classList.remove('hidden');
+    updateConfirmBtn();
+  }
+}
 
 // ── Preview back button ────────────────────────────────────────
 document.getElementById('preview-back-btn').addEventListener('click', () => {
   invoke('cleanup_temp_dir').catch(() => {});
   pickerSession.processedPaths = { boxart: null, screenshot: null, title: null, menu: null };
   pickerSession.processSeq = { boxart: 0, screenshot: 0, title: 0, menu: 0 };
+  resetExportState();
   navigate(1);
   activatePickerTab(pickerSession.activeTab);
+});
+
+// ── Export — confirm & save ────────────────────────────────────
+document.getElementById('confirm-save-btn').addEventListener('click', async () => {
+  const confirmBtn = document.getElementById('confirm-save-btn');
+  confirmBtn.disabled = true;
+  clearExportStatus();
+
+  const romName = getRomName();
+  const outputDir = outputDirInput.value.trim();
+  if (!romName) { showExportError('No ROM file selected.'); updateConfirmBtn(); return; }
+  if (!outputDir) { showExportError('No output directory selected.'); updateConfirmBtn(); return; }
+
+  const selections = buildExportPaths();
+  try {
+    const report = await invoke('export_images', { selections, romName, outputDir, overwrite: false });
+    if (report.conflicts.length > 0) {
+      pendingExport = { selections, romName, outputDir };
+      const list = document.getElementById('overwrite-conflict-list');
+      list.innerHTML = report.conflicts.map(p => `<li>${escapeHtml(p)}</li>`).join('');
+      document.getElementById('overwrite-warning').classList.remove('hidden');
+      previewActionsEl.classList.add('hidden');
+    } else {
+      await doExport(selections, romName, outputDir);
+    }
+  } catch (err) {
+    showExportError('Export failed: ' + err);
+    updateConfirmBtn();
+  }
+});
+
+document.getElementById('overwrite-cancel-btn').addEventListener('click', () => {
+  resetExportState(); // clears pendingExport, restores .preview-actions, re-enables button
+});
+
+document.getElementById('overwrite-confirm-btn').addEventListener('click', async () => {
+  if (!pendingExport) return;
+  const { selections, romName, outputDir } = pendingExport;
+  pendingExport = null;
+  const overwriteBtn = document.getElementById('overwrite-confirm-btn');
+  overwriteBtn.disabled = true;
+  document.getElementById('overwrite-warning').classList.add('hidden');
+  await doExport(selections, romName, outputDir);
+  overwriteBtn.disabled = false;
+});
+
+document.getElementById('scrape-another-btn').addEventListener('click', async () => {
+  await invoke('cleanup_temp_dir').catch(() => {});
+  resetPickerUI();
+  resetExportState();
+  // Reset scrape form (output dir is intentionally kept for the next scrape)
+  romPathInput.value = '';
+  const termEl = document.getElementById('search-term');
+  termEl.value = '';
+  delete termEl.dataset.userEdited;
+  scrapeResult.classList.add('hidden');
+  scrapeResult.textContent = '';
+  scrapeSession.allGames = [];
+  scrapeSession.currentId = null;
+  updateScrapeBtn();
+  navigate(0);
 });
 
 // ── Picker back button ─────────────────────────────────────────

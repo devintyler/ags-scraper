@@ -12,8 +12,8 @@ mod image_processing;
 mod steamgriddb;
 
 use commands::{
-    cleanup_temp_dir, clear_cache, download_and_cache, fetch_sgdb_images, load_config_cmd,
-    process_image, save_config_cmd, search_game,
+    cleanup_temp_dir, clear_cache, download_and_cache, export_images, fetch_sgdb_images,
+    load_config_cmd, process_image, save_config_cmd, search_game,
 };
 
 /// Shared HTTP client held in Tauri state so all commands reuse the connection pool.
@@ -39,6 +39,7 @@ pub fn run() {
             clear_cache,
             process_image,
             cleanup_temp_dir,
+            export_images,
         ])
         .build(tauri::generate_context!())
         .expect(
