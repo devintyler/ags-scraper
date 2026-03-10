@@ -27,6 +27,7 @@ function openSettings() {
   flow.classList.add('hidden');
   settingsBtn.classList.add('active');
   settingsBtn.setAttribute('aria-expanded', 'true');
+  clearCacheStatus();
 }
 
 function closeSettings() {
@@ -34,6 +35,7 @@ function closeSettings() {
   flow.classList.remove('hidden');
   settingsBtn.classList.remove('active');
   settingsBtn.setAttribute('aria-expanded', 'false');
+  clearCacheStatus();
 }
 
 settingsBtn.addEventListener('click', () => {
@@ -274,6 +276,11 @@ const pickerSession = {
   results: null,
   selections: { boxart: null, screenshot: null, title: null, menu: null },
   activeTab: 'boxart',
+  processedPaths: { boxart: null, screenshot: null, title: null, menu: null },
+  cropPresets: { boxart: 'Center', menu: 'Center' },
+  // Per-tab monotonic counter — incremented on each process_image call so
+  // stale in-flight responses (e.g. from rapid preset switching) are discarded.
+  processSeq: { boxart: 0, screenshot: 0, title: 0, menu: 0 },
 };
 
 // ── Navigate helper ────────────────────────────────────────────
@@ -291,6 +298,9 @@ function navigate(step) {
 // ── Picker functions ───────────────────────────────────────────
 function resetPickerUI() {
   pickerSession.selections = { boxart: null, screenshot: null, title: null, menu: null };
+  pickerSession.processedPaths = { boxart: null, screenshot: null, title: null, menu: null };
+  pickerSession.cropPresets = { boxart: 'Center', menu: 'Center' };
+  pickerSession.processSeq = { boxart: 0, screenshot: 0, title: 0, menu: 0 };
   pickerSession.activeTab = 'boxart';
   for (const tab of TABS) {
     const grid = document.getElementById(`grid-${tab}`);
@@ -441,24 +451,262 @@ document.getElementById('step-1').addEventListener('click', (e) => {
     );
     if (allResolved) {
       navigate(2);
+      renderPreview();
     } else {
       advanceToNextUnresolved(pickerSession.activeTab);
     }
   }
 });
 
+// ── Preview rendering ──────────────────────────────────────────
+const IMAGE_TYPE_MAP = { boxart: 'Boxart', screenshot: 'Screenshot', title: 'Title', menu: 'Menu' };
+// Output pixel dimensions per type — used to size the preview container so its
+// shape always matches the file that will be written.
+// Note: screenshot is a maximum bounding box (output may be smaller if the
+// source image was already within bounds), so the container is an upper bound.
+const OUTPUT_DIMS = {
+  boxart:     { w: 236, h: 322 },
+  screenshot: { w: 362, h: 278 },
+  title:      { w: 960, h: 186 },
+  menu:       { w: 236, h: 322 },
+};
+
+function buildPreviewCol(tab) {
+  const selection = pickerSession.selections[tab];
+  const isSkipped = !selection || selection === SELECTION_SKIP;
+  const isPresetTab = tab === 'boxart' || tab === 'menu';
+
+  const col = document.createElement('div');
+  col.className = 'preview-col';
+  col.dataset.tab = tab;
+
+  const label = document.createElement('div');
+  label.className = 'preview-col-label';
+  label.textContent = TAB_NAMES[tab];
+  col.appendChild(label);
+
+  if (isSkipped) {
+    const skip = document.createElement('div');
+    skip.className = 'preview-col-skip';
+    skip.textContent = 'Skipped';
+    col.appendChild(skip);
+    return col;
+  }
+
+  const imgWrap = document.createElement('div');
+  imgWrap.className = 'preview-col-img-wrap';
+  const { w, h } = OUTPUT_DIMS[tab];
+  imgWrap.style.width = `${w}px`;
+  imgWrap.style.aspectRatio = `${w} / ${h}`;
+
+  const spinner = document.createElement('div');
+  spinner.className = 'preview-col-spinner hidden';
+  imgWrap.appendChild(spinner);
+
+  const img = document.createElement('img');
+  img.className = 'preview-col-img hidden';
+  img.id = `preview-col-img-${tab}`;
+  img.alt = TAB_NAMES[tab];
+  imgWrap.appendChild(img);
+  col.appendChild(imgWrap);
+
+  const dims = document.createElement('div');
+  dims.className = 'preview-col-dims hidden';
+  dims.id = `preview-col-dims-${tab}`;
+  col.appendChild(dims);
+
+  if (isPresetTab) {
+    const presets = document.createElement('div');
+    presets.className = 'preview-col-presets';
+    for (const preset of ['Top', 'Center', 'Bottom']) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'crop-preset-btn' + (preset === pickerSession.cropPresets[tab] ? ' active' : '');
+      btn.dataset.tab = tab;
+      btn.dataset.preset = preset;
+      btn.textContent = preset;
+      presets.appendChild(btn);
+    }
+    col.appendChild(presets);
+  }
+
+  return col;
+}
+
+function renderPreview() {
+  const container = document.getElementById('preview-columns');
+  container.innerHTML = '';
+  for (const tab of TABS) {
+    container.appendChild(buildPreviewCol(tab));
+  }
+  for (const tab of TABS) {
+    const sel = pickerSession.selections[tab];
+    if (!sel || sel === SELECTION_SKIP) continue;
+    if (pickerSession.processedPaths[tab]) {
+      // Re-navigating to preview — restore the already-processed image.
+      restorePreviewImage(tab, pickerSession.processedPaths[tab]);
+    } else {
+      triggerPreviewProcess(tab);
+    }
+  }
+}
+
+function restorePreviewImage(tab, tempPath) {
+  const imgEl = document.getElementById(`preview-col-img-${tab}`);
+  const dimsEl = document.getElementById(`preview-col-dims-${tab}`);
+  if (!imgEl) return;
+  imgEl.onload = () => {
+    imgEl.classList.remove('hidden');
+    if (dimsEl) {
+      dimsEl.textContent = `${imgEl.naturalWidth} × ${imgEl.naturalHeight}`;
+      dimsEl.classList.remove('hidden');
+    }
+  };
+  imgEl.src = convertFileSrc(tempPath) + '?t=' + Date.now();
+}
+
+async function triggerPreviewProcess(tab) {
+  const selection = pickerSession.selections[tab];
+  if (!selection || selection === SELECTION_SKIP) return;
+
+  const cropPreset = (tab === 'boxart' || tab === 'menu') ? pickerSession.cropPresets[tab] : null;
+  const col = document.querySelector(`.preview-col[data-tab="${tab}"]`);
+  if (!col) return;
+
+  const seq = ++pickerSession.processSeq[tab];
+
+  const spinnerEl = col.querySelector('.preview-col-spinner');
+  const imgEl = document.getElementById(`preview-col-img-${tab}`);
+  const dimsEl = document.getElementById(`preview-col-dims-${tab}`);
+  const imgWrap = col.querySelector('.preview-col-img-wrap');
+
+  if (spinnerEl) spinnerEl.classList.remove('hidden');
+  if (imgEl) imgEl.classList.add('dimmed');
+  if (dimsEl) dimsEl.classList.add('hidden');
+  imgWrap?.querySelector('.preview-col-error')?.remove();
+
+  try {
+    const tempPath = await invoke('process_image', {
+      cachePath: selection.localPath,
+      imageType: IMAGE_TYPE_MAP[tab],
+      cropPreset,
+    });
+    if (pickerSession.processSeq[tab] !== seq) return; // stale — a newer call superseded this one
+
+    pickerSession.processedPaths[tab] = tempPath;
+    if (imgEl) {
+      imgEl.onload = () => {
+        if (spinnerEl) spinnerEl.classList.add('hidden');
+        imgEl.classList.remove('hidden', 'dimmed');
+        if (dimsEl) {
+          dimsEl.textContent = `${imgEl.naturalWidth} × ${imgEl.naturalHeight}`;
+          dimsEl.classList.remove('hidden');
+        }
+      };
+      imgEl.onerror = () => {
+        if (spinnerEl) spinnerEl.classList.add('hidden');
+        imgEl.classList.add('hidden');
+        imgEl.classList.remove('dimmed');
+        if (imgWrap) {
+          const errEl = document.createElement('span');
+          errEl.className = 'preview-col-error';
+          errEl.textContent = 'Failed to display';
+          imgWrap.appendChild(errEl);
+        }
+      };
+      imgEl.src = convertFileSrc(tempPath) + '?t=' + Date.now();
+    }
+  } catch (err) {
+    if (pickerSession.processSeq[tab] !== seq) return;
+    if (spinnerEl) spinnerEl.classList.add('hidden');
+    if (imgEl) {
+      imgEl.classList.add('hidden');
+      imgEl.classList.remove('dimmed');
+    }
+    if (imgWrap) {
+      const errEl = document.createElement('span');
+      errEl.className = 'preview-col-error';
+      errEl.textContent = 'Processing failed';
+      imgWrap.appendChild(errEl);
+    }
+    console.error('process_image failed:', err);
+  }
+}
+
+// ── Preview crop preset delegation ────────────────────────────
+document.getElementById('preview-columns').addEventListener('click', (e) => {
+  const presetBtn = e.target.closest('.crop-preset-btn');
+  if (!presetBtn) return;
+  const { tab, preset } = presetBtn.dataset;
+  document.querySelectorAll(`.preview-col[data-tab="${tab}"] .crop-preset-btn`)
+    .forEach(b => b.classList.toggle('active', b.dataset.preset === preset));
+  pickerSession.cropPresets[tab] = preset;
+  triggerPreviewProcess(tab);
+});
+
 // ── Preview back button ────────────────────────────────────────
 document.getElementById('preview-back-btn').addEventListener('click', () => {
+  invoke('cleanup_temp_dir').catch(() => {});
+  pickerSession.processedPaths = { boxart: null, screenshot: null, title: null, menu: null };
+  pickerSession.processSeq = { boxart: 0, screenshot: 0, title: 0, menu: 0 };
   navigate(1);
   activatePickerTab(pickerSession.activeTab);
 });
 
 // ── Picker back button ─────────────────────────────────────────
 document.getElementById('picker-back-btn').addEventListener('click', () => {
+  invoke('cleanup_temp_dir').catch(() => {});
   pickerSession.results = null;
   resetPickerUI();
   renderPickerTabs();
   navigate(0);
+});
+
+// ── Cache management ───────────────────────────────────────────
+function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function setCacheStatus(msg, isError) {
+  const el = document.getElementById('cache-status');
+  el.textContent = msg;
+  el.className = msg ? (isError ? 'error' : 'success') : '';
+}
+
+function clearCacheStatus() {
+  setCacheStatus('', false);
+}
+
+function setClearBtnsDisabled(disabled) {
+  document.getElementById('clear-cache-btn').disabled = disabled;
+  document.getElementById('clear-temp-btn').disabled = disabled;
+}
+
+document.getElementById('clear-cache-btn').addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  setClearBtnsDisabled(true);
+  try {
+    const result = await invoke('clear_cache');
+    const msg = result.files_deleted === 0
+      ? 'Downloaded image cache is already empty'
+      : `Cleared ${result.files_deleted} file${result.files_deleted !== 1 ? 's' : ''} (${formatBytes(result.bytes_freed)} freed)`;
+    setCacheStatus(msg, false);
+  } catch (err) {
+    setCacheStatus('Failed to clear cache: ' + err, true);
+  } finally {
+    setClearBtnsDisabled(false);
+  }
+});
+
+document.getElementById('clear-temp-btn').addEventListener('click', async () => {
+  setClearBtnsDisabled(true);
+  // cleanup_temp_dir returns no value and silently ignores errors on the Rust
+  // side, so this invoke always resolves — there is no catch path to handle.
+  await invoke('cleanup_temp_dir');
+  setCacheStatus('Preview temp files cleared', false);
+  setClearBtnsDisabled(false);
 });
 
 // ── Save settings ─────────────────────────────────────────────

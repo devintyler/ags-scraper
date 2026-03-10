@@ -1,29 +1,31 @@
 /* ── CSS Variables ─────────────────────────────────────────── */
 :root {
   /* Colors */
-  --color-bg:           #1a1a2e;
-  --color-surface:      #16213e;
-  --color-border:       #0f3460;
-  --color-accent:       #e94560;
+  --color-bg: #1a1a2e;
+  --color-surface: #16213e;
+  --color-border: #0f3460;
+  --color-accent: #e94560;
   --color-accent-hover: #c73652;
-  --color-text:         #e0e0e0;
-  --color-text-muted:   #888;
-  --color-success:      #4caf50;
-  --color-error:        #e94560;
+  --color-text: #e0e0e0;
+  --color-text-muted: #888;
+  --color-success: #4caf50;
+  --color-error: #e94560;
 
   /* Typography */
-  --font-family:   system-ui, -apple-system, sans-serif;
-  --font-size-sm:  12px;
+  --font-family: system-ui, -apple-system, sans-serif;
+  --font-size-sm: 12px;
   --font-size-base: 14px;
-  --font-size-lg:  18px;
+  --font-size-lg: 18px;
 
   /* Layout */
-  --radius:        4px;
+  --radius: 4px;
   --header-height: 48px;
 }
 
 /* ── Reset ─────────────────────────────────────────────────── */
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
@@ -161,6 +163,65 @@ button.btn-outline:hover:not(:disabled) {
   background: rgba(224, 224, 224, 0.08);
 }
 
+button.btn-sm {
+  font-size: var(--font-size-sm);
+  font-weight: 400;
+  padding: 5px 12px;
+}
+
+/* ── Settings sections ─────────────────────────────────────── */
+.settings-divider {
+  border: none;
+  border-top: 1px solid var(--color-border);
+  margin: 24px 0;
+}
+
+.settings-section-title {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 12px;
+}
+
+.cache-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+}
+
+.cache-row + .cache-row {
+  border-top: 1px solid var(--color-border);
+}
+
+.cache-row-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.cache-row-label {
+  font-size: var(--font-size-base);
+  color: var(--color-text);
+}
+
+.cache-row-desc {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+#cache-status {
+  display: block;
+  margin-top: 10px;
+  font-size: var(--font-size-sm);
+}
+
+#cache-status.success { color: var(--color-success); }
+#cache-status.error   { color: var(--color-error); }
+
 h2 {
   font-size: var(--font-size-lg);
   font-weight: 600;
@@ -246,8 +307,13 @@ button:disabled {
   font-size: var(--font-size-sm);
 }
 
-#status-msg.success { color: var(--color-success); }
-#status-msg.error   { color: var(--color-error); }
+#status-msg.success {
+  color: var(--color-success);
+}
+
+#status-msg.error {
+  color: var(--color-error);
+}
 
 /* ── Main / Scrape View ────────────────────────────────────── */
 .file-picker-row {
@@ -484,19 +550,22 @@ button.picker-tab.resolved.active {
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(
-    90deg,
-    transparent 25%,
-    rgba(255, 255, 255, 0.07) 50%,
-    transparent 75%
-  );
+  background: linear-gradient(90deg,
+      transparent 25%,
+      rgba(255, 255, 255, 0.07) 50%,
+      transparent 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
 }
 
 @keyframes shimmer {
-  0%   { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -592,4 +661,139 @@ button.picker-next-sel-btn {
   display: flex;
   align-items: center;
   margin-bottom: 20px;
+}
+
+/* ── Utility ───────────────────────────────────────────────── */
+.hidden {
+  display: none;
+}
+
+/* ── Crop Preset Buttons ───────────────────────────────────── */
+button.crop-preset-btn {
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  font-weight: 400;
+  padding: 4px 14px;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+button.crop-preset-btn:hover:not(:disabled) {
+  background: none;
+  border-color: var(--color-text-muted);
+  color: var(--color-text);
+}
+
+button.crop-preset-btn.active {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-text);
+}
+
+button.crop-preset-btn.active:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+}
+
+/* ── Preview step ──────────────────────────────────────────── */
+.preview-content {
+  max-width: 1000px;
+}
+
+.preview-columns {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.preview-col {
+  flex: 1;
+  min-width: 160px;
+}
+
+.preview-col-label {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.preview-col-img-wrap {
+  position: relative;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  /* width and aspect-ratio set per-tab via inline style to match output dimensions */
+  max-width: 100%;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.preview-col-spinner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: preview-col-spin 0.7s linear infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+
+@keyframes preview-col-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.preview-col-error {
+  font-size: var(--font-size-sm);
+  color: var(--color-error);
+  padding: 8px 0;
+}
+
+.preview-col-img.dimmed {
+  opacity: 0.3;
+}
+
+.preview-col-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: var(--radius);
+}
+
+.preview-col-dims {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  margin-bottom: 8px;
+}
+
+.preview-col-presets {
+  display: flex;
+  gap: 4px;
+}
+
+.preview-col-skip {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  padding: 16px 0;
+}
+
+.preview-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 24px;
 }
