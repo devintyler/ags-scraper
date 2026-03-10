@@ -222,6 +222,101 @@ pub fn cleanup_temp_dir() {
     crate::image_processing::cleanup_temp_dir();
 }
 
+#[derive(serde::Deserialize)]
+pub struct ExportSelections {
+    boxart:     Option<String>,
+    screenshot: Option<String>,
+    title:      Option<String>,
+    menu:       Option<String>,
+}
+
+struct ExportEntry {
+    image_type: &'static str,
+    src:        Option<String>,
+    dest:       std::path::PathBuf,
+}
+
+#[derive(Serialize)]
+pub struct ExportFileResult {
+    pub image_type: String,
+    pub dest_path:  String,
+    pub success:    bool,
+    pub error:      Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct ExportReport {
+    pub results:   Vec<ExportFileResult>,
+    pub conflicts: Vec<String>,
+}
+
+/// Two-phase export: call once with `overwrite: false` to detect conflicts (returns
+/// `ExportReport { results: [], conflicts }` with no writes), then call again with
+/// `overwrite: true` to perform the actual copy (returns `ExportReport { results, conflicts: [] }`).
+#[tauri::command]
+pub async fn export_images(
+    selections: ExportSelections,
+    rom_name: String,
+    output_dir: String,
+    overwrite: bool,
+) -> Result<ExportReport, String> {
+    let out = std::path::Path::new(&output_dir);
+    if !out.is_dir() {
+        return Err(format!("Output directory does not exist: {output_dir}"));
+    }
+
+    // Strip characters that could make the name escape the output directory.
+    let safe_name: String = rom_name
+        .chars()
+        .filter(|c| !matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|'))
+        .collect();
+    let safe_name = safe_name.trim_matches('.');
+    if safe_name.is_empty() {
+        return Err("ROM name is empty or invalid".to_string());
+    }
+
+    let entries = vec![
+        ExportEntry { image_type: "boxart",     src: selections.boxart,     dest: out.join(format!("{safe_name}.png"))       },
+        ExportEntry { image_type: "screenshot", src: selections.screenshot, dest: out.join(format!("{safe_name}.jpg"))       },
+        ExportEntry { image_type: "title",      src: selections.title,      dest: out.join(format!("{safe_name}_title.png")) },
+        ExportEntry { image_type: "menu",       src: selections.menu,       dest: out.join(format!("{safe_name}_menu.png"))  },
+    ];
+
+    if !overwrite {
+        let conflicts: Vec<String> = entries.iter()
+            .filter(|e| e.src.is_some() && e.dest.exists())
+            .map(|e| e.dest.to_string_lossy().into_owned())
+            .collect();
+        return Ok(ExportReport { results: vec![], conflicts });
+    }
+
+    let mut results = Vec::new();
+    for entry in &entries {
+        let Some(src) = &entry.src else { continue };
+        let dest_path = entry.dest.to_string_lossy().into_owned();
+        match tokio::fs::copy(src, &entry.dest).await {
+            Ok(bytes_written) => {
+                results.push(ExportFileResult {
+                    image_type: entry.image_type.to_string(),
+                    dest_path,
+                    success: bytes_written > 0,
+                    error: if bytes_written > 0 { None } else { Some("Written file is empty".to_string()) },
+                });
+            }
+            Err(e) => {
+                results.push(ExportFileResult {
+                    image_type: entry.image_type.to_string(),
+                    dest_path,
+                    success: false,
+                    error: Some(e.to_string()),
+                });
+            }
+        }
+    }
+
+    Ok(ExportReport { results, conflicts: vec![] })
+}
+
 #[tauri::command]
 pub async fn fetch_sgdb_images(
     http: tauri::State<'_, AppClient>,

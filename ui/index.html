@@ -278,6 +278,18 @@
           <button type="button" id="preview-back-btn">Back to Selection</button>
         </div>
         <div class="preview-columns" id="preview-columns"></div>
+        <div id="overwrite-warning" class="overwrite-warning hidden">
+          <p class="overwrite-warning-msg">These files already exist in the output directory:</p>
+          <ul id="overwrite-conflict-list"></ul>
+          <div class="overwrite-warning-actions">
+            <button type="button" id="overwrite-cancel-btn" class="btn-outline">Cancel</button>
+            <button type="button" id="overwrite-confirm-btn">Overwrite</button>
+          </div>
+        </div>
+        <div id="export-success" class="export-success hidden">
+          <p class="export-success-msg">Files saved to <span id="export-success-dir"></span></p>
+          <button type="button" id="scrape-another-btn">Scrape Another ROM</button>
+        </div>
         <div class="preview-actions">
           <button type="button" id="confirm-save-btn" disabled>Confirm &amp; Save</button>
           <span id="export-status"></span>
