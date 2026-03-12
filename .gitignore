@@ -1,5 +1,9 @@
 /target
 /src-tauri/target
 /src-tauri/gen
+/src-tauri/.cargo/
 
 node_modules/
+
+/tasks/SCREENSCRAPER*
+/tasks/ss-api-docs.html

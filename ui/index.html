@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -67,16 +67,24 @@
         <div class="cache-row">
           <div class="cache-row-info">
             <span class="cache-row-label">Downloaded images</span>
-            <span class="cache-row-desc">Thumbnails fetched from SteamGridDB and ScreenScraper</span>
+            <span class="cache-row-desc"
+              >Thumbnails fetched from SteamGridDB and ScreenScraper</span
+            >
           </div>
-          <button type="button" id="clear-cache-btn" class="btn-outline btn-sm">Clear</button>
+          <button type="button" id="clear-cache-btn" class="btn-outline btn-sm">
+            Clear
+          </button>
         </div>
         <div class="cache-row">
           <div class="cache-row-info">
             <span class="cache-row-label">Processed previews</span>
-            <span class="cache-row-desc">Resized images generated during scraping sessions</span>
+            <span class="cache-row-desc"
+              >Resized images generated during scraping sessions</span
+            >
           </div>
-          <button type="button" id="clear-temp-btn" class="btn-outline btn-sm">Clear</button>
+          <button type="button" id="clear-temp-btn" class="btn-outline btn-sm">
+            Clear
+          </button>
         </div>
         <span id="cache-status"></span>
       </div>
@@ -106,8 +114,7 @@
           <label for="rom-path"
             >ROM File
             <span class="label-muted"
-              >(filename used for search &amp; output — not read or
-              uploaded)</span
+              >(hashed locally for exact matching — never uploaded)</span
             ></label
           >
           <div class="file-picker-row">
@@ -137,25 +144,66 @@
           </div>
         </div>
         <div class="field-group">
-          <label for="search-term">Search Term</label>
+          <label>Source</label>
+          <div class="source-toggle">
+            <label class="radio-label">
+              <input
+                type="radio"
+                name="source"
+                id="src-ss"
+                value="ScreenScraper"
+                checked
+              />
+              ScreenScraper
+            </label>
+            <label class="radio-label">
+              <input
+                type="radio"
+                name="source"
+                id="src-sgdb"
+                value="SteamGridDB"
+              />
+              SteamGridDB (no screenshots)
+            </label>
+          </div>
+          <div id="ss-cred-warning" class="inline-warning" hidden>
+            ScreenScraper credentials not set.
+            <a href="#" id="ss-warning-link">Go to Settings</a>
+          </div>
+          <div id="sgdb-cred-warning" class="inline-warning" hidden>
+            SteamGridDB API key not set.
+            <a href="#" id="sgdb-warning-link">Go to Settings</a>
+          </div>
+        </div>
+        <div id="search-term-row" class="field-group">
+          <label for="search-term"
+            >Search Term
+            <span class="label-muted"
+              >(game title — edit if ROM shortname doesn't match)</span
+            ></label
+          >
           <input
             type="text"
             id="search-term"
             placeholder="Auto-filled from ROM filename"
           />
         </div>
-        <div class="field-group">
-          <label>Source</label>
-          <label class="checkbox-label">
-            <input
-              type="checkbox"
-              id="src-sgdb"
-              checked
-              disabled
-              title="Only SteamGridDB is available in this version"
-            />
-            SteamGridDB
-          </label>
+        <div id="system-row" class="field-group">
+          <label for="system-select">System</label>
+          <select id="system-select">
+            <option value="75">MAME (Arcade)</option>
+            <option value="31">PC Engine / TurboGrafx-16</option>
+            <option value="3">NES</option>
+            <option value="4">Super Nintendo</option>
+            <option value="9">Game Boy</option>
+            <option value="10">Game Boy Color</option>
+            <option value="12">Game Boy Advance</option>
+            <option value="1">Sega Mega Drive / Genesis</option>
+            <option value="2">Sega Master System</option>
+            <option value="26">Atari 2600</option>
+            <option value="40">Atari 5200</option>
+            <option value="41">Atari 7800</option>
+          </select>
         </div>
         <div class="scrape-actions">
           <button type="button" id="scrape-btn" disabled>Scrape</button>
@@ -279,19 +327,29 @@
         </div>
         <div class="preview-columns" id="preview-columns"></div>
         <div id="overwrite-warning" class="overwrite-warning hidden">
-          <p class="overwrite-warning-msg">These files already exist in the output directory:</p>
+          <p class="overwrite-warning-msg">
+            These files already exist in the output directory:
+          </p>
           <ul id="overwrite-conflict-list"></ul>
           <div class="overwrite-warning-actions">
-            <button type="button" id="overwrite-cancel-btn" class="btn-outline">Cancel</button>
+            <button type="button" id="overwrite-cancel-btn" class="btn-outline">
+              Cancel
+            </button>
             <button type="button" id="overwrite-confirm-btn">Overwrite</button>
           </div>
         </div>
         <div id="export-success" class="export-success hidden">
-          <p class="export-success-msg">Files saved to <span id="export-success-dir"></span></p>
-          <button type="button" id="scrape-another-btn">Scrape Another ROM</button>
+          <p class="export-success-msg">
+            Files saved to <span id="export-success-dir"></span>
+          </p>
+          <button type="button" id="scrape-another-btn">
+            Scrape Another ROM
+          </button>
         </div>
         <div class="preview-actions">
-          <button type="button" id="confirm-save-btn" disabled>Confirm &amp; Save</button>
+          <button type="button" id="confirm-save-btn" disabled>
+            Confirm &amp; Save
+          </button>
           <span id="export-status"></span>
         </div>
       </section>

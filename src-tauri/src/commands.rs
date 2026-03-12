@@ -15,6 +15,14 @@ pub struct GameCandidate {
     pub name: String,
 }
 
+#[derive(Serialize, Clone)]
+pub struct SsGameCandidate {
+    pub id: String,
+    pub name: String,
+    pub system_id: String,
+    pub system_name: String,
+}
+
 #[derive(Serialize)]
 pub struct SearchResults {
     pub boxart: Vec<ImageCandidate>,
@@ -22,7 +30,8 @@ pub struct SearchResults {
     pub title: Vec<ImageCandidate>,
     pub menu: Vec<ImageCandidate>,
     pub matched_game: Option<GameCandidate>,
-    pub game_candidates: Vec<GameCandidate>, // alternative game matches the user can switch to
+    pub game_candidates: Vec<GameCandidate>, // SGDB alternative game matches
+    pub ss_candidates: Vec<SsGameCandidate>, // SS alternative game matches
 }
 
 #[derive(Serialize)]
@@ -50,6 +59,18 @@ async fn load_sgdb_api_key() -> Result<SecretString, String> {
         return Err("SteamGridDB API key not configured".to_string());
     }
     config::decrypt(&cfg.steamgriddb.api_key_enc)
+}
+
+/// Loads config from disk and decrypts ScreenScraper credentials.
+async fn load_ss_credentials() -> Result<(String, SecretString), String> {
+    let cfg = tokio::task::spawn_blocking(config::load_config)
+        .await
+        .map_err(|e| e.to_string())??;
+    if cfg.screenscraper.username.is_empty() || cfg.screenscraper.password_enc.is_empty() {
+        return Err("ScreenScraper credentials not configured".to_string());
+    }
+    let pass = config::decrypt(&cfg.screenscraper.password_enc)?;
+    Ok((cfg.screenscraper.username, pass))
 }
 
 // load_config_cmd and save_config_cmd use spawn_blocking to avoid holding the
@@ -110,15 +131,76 @@ pub async fn save_config_cmd(
 #[tauri::command]
 pub async fn search_game(
     http: tauri::State<'_, AppClient>,
-    _rom_filename: String,   // full filename incl. extension — TODO: pass to ScreenScraper when integrated
+    rom_path: String,
+    rom_filename: String,
     search_term: String,
-    _system_id: Option<u32>, // TODO: pass to ScreenScraper when integrated
+    system_id: Option<u32>,
+    source: String,
+) -> Result<SearchResults, String> {
+    let client = &http.0;
+
+    match source.as_str() {
+        "ScreenScraper" => search_game_ss(client, &rom_path, &rom_filename, system_id, &search_term).await,
+        _               => search_game_sgdb(client, &search_term).await,
+    }
+}
+
+async fn search_game_ss(
+    client: &reqwest::Client,
+    rom_path: &str,
+    rom_filename: &str,
+    system_id: Option<u32>,
+    search_term: &str,
+) -> Result<SearchResults, String> {
+    let (ss_user, ss_pass_secret) = load_ss_credentials().await?;
+    let ss_pass = ss_pass_secret.expose_secret().to_owned();
+
+    // Step 1: try exact hash lookup via jeuInfos when system ID is known.
+    if let Some(sid) = system_id {
+        if !rom_path.is_empty() {
+            match crate::screenscraper::lookup_by_hash(
+                client, rom_path, rom_filename, sid, &ss_user, &ss_pass,
+            ).await {
+                Ok(Some(ss)) => {
+                    #[cfg(debug_assertions)]
+                    eprintln!("[SS] hash lookup succeeded");
+                    return Ok(SearchResults {
+                        boxart: ss.boxart,
+                        screenshot: ss.screenshot,
+                        title: ss.title,
+                        menu: ss.menu,
+                        matched_game: ss.matched_name.map(|n| GameCandidate { id: 0, name: n }),
+                        game_candidates: vec![],
+                        ss_candidates: ss.candidates,
+                    });
+                }
+                Ok(None) => { #[cfg(debug_assertions)] eprintln!("[SS] hash lookup: no match, falling through to jeuRecherche"); }
+                Err(e)   => { #[cfg(debug_assertions)] eprintln!("[SS] hash lookup error (falling through): {e}"); }
+            }
+        }
+    }
+
+    // Step 2: fall back to text search (jeuRecherche).
+    let ss = crate::screenscraper::search_game(client, search_term, system_id, &ss_user, &ss_pass).await?;
+    Ok(SearchResults {
+        boxart: ss.boxart,
+        screenshot: ss.screenshot,
+        title: ss.title,
+        menu: ss.menu,
+        matched_game: ss.matched_name.map(|n| GameCandidate { id: 0, name: n }),
+        game_candidates: vec![],
+        ss_candidates: ss.candidates,
+    })
+}
+
+async fn search_game_sgdb(
+    client: &reqwest::Client,
+    search_term: &str,
 ) -> Result<SearchResults, String> {
     let api_key_secret = load_sgdb_api_key().await?;
     let api_key = api_key_secret.expose_secret();
-    let client = &http.0;
 
-    let games = crate::steamgriddb::search_game(client, &search_term, api_key).await?;
+    let games = crate::steamgriddb::search_game(client, search_term, api_key).await?;
     if games.is_empty() {
         return Ok(SearchResults {
             boxart: vec![],
@@ -127,6 +209,7 @@ pub async fn search_game(
             menu: vec![],
             matched_game: None,
             game_candidates: vec![],
+            ss_candidates: vec![],
         });
     }
 
@@ -151,6 +234,7 @@ pub async fn search_game(
         menu: grids,
         matched_game: Some(matched),
         game_candidates,
+        ss_candidates: vec![],
     })
 }
 
@@ -341,5 +425,27 @@ pub async fn fetch_sgdb_images(
         menu: grids,
         matched_game: Some(GameCandidate { id: game_id, name: game_name }),
         game_candidates: vec![], // frontend manages the full game list
+        ss_candidates: vec![],
+    })
+}
+
+#[tauri::command]
+pub async fn fetch_ss_images(
+    http: tauri::State<'_, AppClient>,
+    game_id: String,
+) -> Result<SearchResults, String> {
+    let (ss_user, ss_pass_secret) = load_ss_credentials().await?;
+    let ss_pass = ss_pass_secret.expose_secret().to_owned();
+    let client = &http.0;
+
+    let ss = crate::screenscraper::fetch_by_game_id(client, &game_id, &ss_user, &ss_pass).await?;
+    Ok(SearchResults {
+        boxart: ss.boxart,
+        screenshot: ss.screenshot,
+        title: ss.title,
+        menu: ss.menu,
+        matched_game: ss.matched_name.map(|n| GameCandidate { id: 0, name: n }),
+        game_candidates: vec![],
+        ss_candidates: vec![],
     })
 }

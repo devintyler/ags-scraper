@@ -193,7 +193,7 @@ button.btn-sm {
   padding: 10px 0;
 }
 
-.cache-row + .cache-row {
+.cache-row+.cache-row {
   border-top: 1px solid var(--color-border);
 }
 
@@ -219,8 +219,13 @@ button.btn-sm {
   font-size: var(--font-size-sm);
 }
 
-#cache-status.success { color: var(--color-success); }
-#cache-status.error   { color: var(--color-error); }
+#cache-status.success {
+  color: var(--color-success);
+}
+
+#cache-status.error {
+  color: var(--color-error);
+}
 
 h2 {
   font-size: var(--font-size-lg);
@@ -350,6 +355,40 @@ button:disabled {
   cursor: default;
 }
 
+.source-toggle {
+  display: flex;
+  gap: 16px;
+}
+
+.radio-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-base);
+  color: var(--color-text);
+  text-transform: none;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.radio-label input[type="radio"] {
+  accent-color: var(--color-accent);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+
+.inline-warning {
+  margin-top: 6px;
+  font-size: var(--font-size-sm);
+  color: var(--color-error);
+}
+
+.inline-warning a {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+
 .label-muted {
   color: var(--color-text-muted);
   font-weight: 400;
@@ -396,6 +435,40 @@ button:disabled {
   color: var(--color-text-muted);
 }
 
+.exact-match-block {
+  padding: 10px 14px;
+  border: 1px solid var(--color-success);
+  border-radius: var(--radius);
+  margin-bottom: 4px;
+  font-size: var(--font-size-sm);
+}
+
+.exact-match-block-label {
+  font-size: var(--font-size-xs);
+  color: var(--color-success);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+}
+
+.exact-match-block-body {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.exact-match-block-body .exact-pick-btn {
+  flex-shrink: 0;
+  font-size: var(--font-size-sm);
+}
+
+.new-results-label {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  margin: 10px 0 6px;
+}
+
 .alt-matches {
   margin-top: 10px;
   display: flex;
@@ -429,6 +502,36 @@ button.alt-match-btn:disabled {
 
 .pick-images-row {
   margin-top: 12px;
+}
+
+.ss-name-search {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border);
+}
+
+.ss-name-search-header {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  margin-bottom: 8px;
+}
+
+.ss-name-search-row {
+  display: flex;
+  gap: 8px;
+}
+
+.ss-name-search-row input[type="text"] {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+
+.ss-name-search-hint {
+  margin-top: 6px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  opacity: 0.7;
 }
 
 /* ── Image Picker ──────────────────────────────────────────── */
