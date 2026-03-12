@@ -88,8 +88,10 @@ fn pad_to_canvas(img: DynamicImage, canvas_w: u32, canvas_h: u32) -> DynamicImag
     if w == 0 || h == 0 {
         return img;
     }
-    // No .min(1.0): allow upscaling so the image fills one canvas dimension
-    // fully, minimising transparent padding on that axis.
+    // No .min(1.0): intentionally allow upscaling for title/logo images so the
+    // image fills one canvas dimension fully, minimising transparent padding.
+    // This is a deliberate exception to the general "never scale up" rule —
+    // a tiny logo letterboxed on a 960×186 canvas looks worse than a scaled one.
     let scale = (canvas_w as f32 / w as f32).min(canvas_h as f32 / h as f32);
     let new_w = (w as f32 * scale).round() as u32;
     let new_h = (h as f32 * scale).round() as u32;

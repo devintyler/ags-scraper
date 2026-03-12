@@ -7,3 +7,5 @@ node_modules/
 
 /tasks/SCREENSCRAPER*
 /tasks/ss-api-docs.html
+
+*.env

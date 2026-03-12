@@ -2,6 +2,7 @@
 name = "agsp-scraper"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85"
 
 [lib]
 name = "gsp_scraper_lib"
@@ -10,6 +11,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "1"

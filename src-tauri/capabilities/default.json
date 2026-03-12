@@ -12,6 +12,14 @@
     "core:window:allow-toggle-maximize",
     "core:window:allow-close",
     "core:webview:default",
-    "dialog:allow-open"
+    "dialog:allow-open",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        { "url": "https://no-intro.org" },
+        { "url": "https://screenscraper.fr/**" },
+        { "url": "https://steamgriddb.com/**" }
+      ]
+    }
   ]
 }

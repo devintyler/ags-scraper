@@ -1,3 +1,12 @@
+/* ── Fonts ──────────────────────────────────────────────────── */
+@font-face {
+  font-family: "Orbitron";
+  src: url("fonts/Orbitron-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* ── CSS Variables ─────────────────────────────────────────── */
 :root {
   /* Colors */
@@ -29,6 +38,7 @@
 
   /* Typography */
   --font-family: system-ui, -apple-system, sans-serif;
+  --font-size-xs: 11px;
   --font-size-sm: 12px;
   --font-size-base: 14px;
   --font-size-lg: 18px;
@@ -163,6 +173,7 @@ body {
 .panel {
   padding: 24px;
   max-width: 560px;
+  margin: 0 auto;
 }
 
 .panel.hidden,
@@ -174,6 +185,7 @@ body {
   display: none;
   padding: 24px;
   max-width: 560px;
+  margin: 0 auto;
 }
 
 .step-content.active {
@@ -212,6 +224,34 @@ button.btn-sm {
   margin-bottom: 12px;
 }
 
+.settings-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 0;
+}
+
+.settings-version {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.settings-close-x {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: 16px;
+  line-height: 1;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+
+.settings-close-x:hover {
+  color: var(--color-text);
+  filter: none;
+}
+
 .cache-row {
   display: flex;
   align-items: center;
@@ -238,6 +278,22 @@ button.btn-sm {
 .cache-row-desc {
   font-size: var(--font-size-sm);
   color: var(--color-text-muted);
+}
+
+.cache-row-size {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.naming-help-link {
+  margin-left: auto;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  text-decoration: none;
+}
+
+.naming-help-link:hover {
+  color: var(--color-accent);
 }
 
 #cache-status {
@@ -328,6 +384,22 @@ select:focus {
   align-items: center;
   gap: 14px;
   margin-top: 24px;
+}
+
+#clear-credentials-btn {
+  margin-left: auto;
+  border-color: var(--color-text-muted);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  padding: 9px 20px;
+}
+
+#clear-credentials-btn:hover:not(:disabled) {
+  border-color: var(--atari-red);
+  color: var(--color-text-muted);
+  background: rgba(var(--atari-red-rgb), 0.1);
+  filter: none;
 }
 
 button[type="button"],
