@@ -51,6 +51,14 @@ The portable `.exe` is written to `src-tauri/target/release/agsp-scraper.exe`.
 
 ---
 
+## Releasing
+
+1. Bump `version` in **both** `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json` to the same value.
+2. Run `bash scripts/release.sh` (requires the [`gh`](https://cli.github.com) CLI, authenticated).
+3. The script builds the `.exe`, creates a **draft** GitHub release with auto-generated notes, and attaches the asset as `agsp-scraper-vX.X.X.exe`. Review the draft on GitHub, then publish.
+
+---
+
 ## License
 
 GPL v3 — see [LICENSE](LICENSE).
