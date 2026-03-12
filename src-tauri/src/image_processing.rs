@@ -19,7 +19,7 @@ pub enum CropPreset {
 
 pub fn temp_dir() -> Result<PathBuf, String> {
     let appdata = std::env::var("APPDATA").map_err(|e| e.to_string())?;
-    Ok(PathBuf::from(appdata).join("gsp-scraper").join("temp"))
+    Ok(PathBuf::from(appdata).join("agsp-scraper").join("temp"))
 }
 
 /// Creates the temp directory and returns its path.
