@@ -118,7 +118,13 @@ pub fn process_image(
     image_type: ImageType,
     crop_preset: Option<CropPreset>,
 ) -> Result<String, String> {
-    let img = image::open(cache_path).map_err(|e| format!("Failed to open image: {e}"))?;
+    // Read the raw bytes and let the image crate detect the format from the
+    // magic bytes — not the file extension. SS media URLs often have no
+    // extension (e.g. image.php?gameid=...), so extension-based detection fails.
+    let bytes = std::fs::read(cache_path)
+        .map_err(|e| format!("Failed to read image: {e}"))?;
+    let img = image::load_from_memory(&bytes)
+        .map_err(|e| format!("Failed to open image: {e}"))?;
 
     let processed = match image_type {
         ImageType::Boxart | ImageType::Menu => {

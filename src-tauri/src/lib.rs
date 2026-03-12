@@ -9,11 +9,12 @@ mod cache;
 mod commands;
 mod config;
 mod image_processing;
+mod screenscraper;
 mod steamgriddb;
 
 use commands::{
     cleanup_temp_dir, clear_cache, download_and_cache, export_images, fetch_sgdb_images,
-    load_config_cmd, process_image, save_config_cmd, search_game,
+    fetch_ss_images, load_config_cmd, process_image, save_config_cmd, search_game,
 };
 
 /// Shared HTTP client held in Tauri state so all commands reuse the connection pool.
@@ -23,7 +24,7 @@ pub fn run() {
     image_processing::cleanup_temp_dir();
 
     let http_client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
+        .timeout(std::time::Duration::from_secs(60))
         .build()
         .expect("Failed to build HTTP client");
 
@@ -35,6 +36,7 @@ pub fn run() {
             save_config_cmd,
             search_game,
             fetch_sgdb_images,
+            fetch_ss_images,
             download_and_cache,
             clear_cache,
             process_image,
