@@ -34,11 +34,11 @@ cargo check
 | File | Responsibility |
 |---|---|
 | `main.rs` | Tauri app entry point, command registration |
-| `config.rs` | Load/save `%APPDATA%\gsp-scraper\config.toml`; DPAPI encrypt/decrypt credentials |
+| `config.rs` | Load/save `%APPDATA%\agsp-scraper\config.toml`; DPAPI encrypt/decrypt credentials |
 | `commands.rs` | All `#[tauri::command]` definitions exposed to the frontend |
 | `screenscraper.rs` | ScreenScraper.fr API client (`jeuRecherche.php`, system ID 75 for MAME) |
 | `steamgriddb.rs` | SteamGridDB API client (grids + logos; never screenshots) |
-| `cache.rs` | Image cache at `%APPDATA%\gsp-scraper\cache\`; SHA-256 URL hash as filename |
+| `cache.rs` | Image cache at `%APPDATA%\agsp-scraper\cache\`; SHA-256 URL hash as filename |
 | `image_processing.rs` | All resize/crop/pad/convert logic using the `image` crate only |
 
 ### Frontend (`ui/`)
@@ -61,7 +61,7 @@ ROM file selected → strip extension → search_game (Tauri command)
   → Preview → export_images writes to output dir
 ```
 
-### Config Schema (`%APPDATA%\gsp-scraper\config.toml`)
+### Config Schema (`%APPDATA%\agsp-scraper\config.toml`)
 
 ```toml
 [screenscraper]
@@ -70,9 +70,6 @@ password_enc = ""   # DPAPI blob, base64
 
 [steamgriddb]
 api_key_enc = ""    # DPAPI blob, base64
-
-[ui]
-last_output_dir = ""
 ```
 
 ### Image Output Rules
@@ -84,9 +81,9 @@ last_output_dir = ""
 | Title/Logo | 960×186 (transparent pad) | PNG | `{rom}_title.png` |
 | Menu | 236×322 | PNG | `{rom}_menu.png` |
 
-- Never scale up. Scale down only, preserving aspect ratio.
+- Never scale up (except Title/Logo — see below). Scale down only, preserving aspect ratio.
 - Boxart/Menu: use Lanczos3, then apply crop preset (Top/Center/Bottom).
-- Title/Logo: fit within canvas, composite centered on transparent RGBA canvas.
+- Title/Logo: fit within canvas, composite centered on transparent RGBA canvas. Upscaling is intentionally allowed so the image fills one canvas dimension and minimises empty padding.
 - Screenshots: scale down using the smaller scale factor so neither dimension exceeds the max; never crop.
 - Output filenames always use the ROM filename (extension stripped), never the search term.
 
@@ -96,7 +93,7 @@ last_output_dir = ""
 - **ScreenScraper auth**: `devid` + `devpassword` (developer account, read from env vars `SCREENSCRAPER_DEV_ID` / `SCREENSCRAPER_DEV_PASSWORD` at build time) + `ssid` + `sspassword` (user's account from config). Never hardcode.
 - **ScreenScraper API mapping**: `box-2D` → Boxart and Menu; `ss` → Screenshot; `wheel` → Title/Logo.
 - **Cache key**: SHA-256 hash of the image URL, used as the cache filename with original extension.
-- **Temp files**: Written to `%APPDATA%\gsp-scraper\temp\{hash}_{type}_{preset}.{ext}`. Cleaned on app startup and on "Scrape Another ROM".
+- **Temp files**: Written to `%APPDATA%\agsp-scraper\temp\{hash}_{type}_{preset}.{ext}`. Cleaned on app startup and on "Scrape Another ROM".
 - **Frontend asset loading**: Use `convertFileSrc()` from `@tauri-apps/api` to convert local cache/temp paths to `asset://` URLs for the WebView.
 - **Overwrite check**: Before exporting, check if any of the four output files already exist and warn the user. Do not create the output directory if it doesn't exist.
 - **SteamGridDB**: Grids (`dimensions=600x900,342x482`, portrait format) populate both boxart and menu (both output at 236×322); logos populate title. Never used for screenshots. Run in parallel with ScreenScraper via `tokio::join!`.

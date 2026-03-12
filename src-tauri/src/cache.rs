@@ -29,3 +29,19 @@ pub fn ensure_cache_dir() -> Result<(), String> {
     std::fs::create_dir_all(cache_dir()?)
         .map_err(|e| format!("Failed to create cache dir: {e}"))
 }
+
+pub fn get_cache_size() -> Result<u64, String> {
+    let dir = cache_dir()?;
+    if !dir.exists() {
+        return Ok(0);
+    }
+    let mut total = 0u64;
+    for entry in std::fs::read_dir(&dir).map_err(|e| e.to_string())?.flatten() {
+        if let Ok(meta) = entry.metadata() {
+            if meta.is_file() {
+                total += meta.len();
+            }
+        }
+    }
+    Ok(total)
+}

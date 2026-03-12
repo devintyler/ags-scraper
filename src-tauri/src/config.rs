@@ -9,8 +9,6 @@ pub struct Config {
     pub screenscraper: ScreenScraperConfig,
     #[serde(default)]
     pub steamgriddb: SteamGridDbConfig,
-    #[serde(default)]
-    pub ui: UiConfig,
 }
 
 #[derive(Deserialize, Serialize, Default)]
@@ -25,12 +23,6 @@ pub struct ScreenScraperConfig {
 pub struct SteamGridDbConfig {
     #[serde(default)]
     pub api_key_enc: String,
-}
-
-#[derive(Deserialize, Serialize, Default)]
-pub struct UiConfig {
-    #[serde(default)]
-    pub last_output_dir: String,
 }
 
 pub fn config_path() -> Result<PathBuf, String> {

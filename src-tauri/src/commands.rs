@@ -77,8 +77,10 @@ async fn load_ss_credentials() -> Result<(String, SecretString), String> {
 // async executor during file I/O and DPAPI calls (settings page open/save).
 
 #[tauri::command]
-pub fn load_config_cmd() -> Result<ConfigView, String> {
-    let cfg = config::load_config()?;
+pub async fn load_config_cmd() -> Result<ConfigView, String> {
+    let cfg = tokio::task::spawn_blocking(config::load_config)
+        .await
+        .map_err(|e| e.to_string())??;
     Ok(ConfigView {
         screenscraper_user: cfg.screenscraper.username,
         screenscraper_pass_set: !cfg.screenscraper.password_enc.is_empty(),
@@ -97,7 +99,7 @@ pub async fn save_config_cmd(
         let pass_secret = SecretString::new(screenscraper_pass);
         let key_secret = SecretString::new(steamgriddb_key);
 
-        // Load existing config to preserve last_output_dir and any credential blobs
+        // Load existing config to preserve any credential blobs
         // the user left blank (empty field = keep existing, not clear).
         let existing = config::load_config().unwrap_or_default();
 
@@ -121,7 +123,6 @@ pub async fn save_config_cmd(
             steamgriddb: config::SteamGridDbConfig {
                 api_key_enc: key_enc,
             },
-            ui: existing.ui,
         })
     })
     .await
@@ -175,7 +176,7 @@ async fn search_game_ss(
                     });
                 }
                 Ok(None) => { #[cfg(debug_assertions)] eprintln!("[SS] hash lookup: no match, falling through to jeuRecherche"); }
-                Err(e)   => { #[cfg(debug_assertions)] eprintln!("[SS] hash lookup error (falling through): {e}"); }
+                Err(_e)  => { #[cfg(debug_assertions)] eprintln!("[SS] hash lookup error (falling through): {_e}"); }
             }
         }
     }
@@ -254,11 +255,33 @@ async fn search_game_sgdb(
     })
 }
 
+/// Validates that a URL is HTTPS and targets one of the two permitted image hosts.
+/// Prevents the frontend from directing the app to make requests to arbitrary hosts.
+fn validate_image_url(url: &str) -> Result<(), String> {
+    if !url.starts_with("https://") {
+        return Err("Only HTTPS image URLs are allowed".to_string());
+    }
+    let after_scheme = &url["https://".len()..];
+    let host_end = after_scheme
+        .find(|c: char| c == '/' || c == '?' || c == '#')
+        .unwrap_or(after_scheme.len());
+    let host = after_scheme[..host_end].split(':').next().unwrap_or("");
+    let allowed = ["screenscraper.fr", "steamgriddb.com"];
+    if !allowed
+        .iter()
+        .any(|&d| host == d || host.ends_with(&format!(".{d}")))
+    {
+        return Err(format!("Image host '{host}' is not permitted"));
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn download_and_cache(
     http: tauri::State<'_, AppClient>,
     url: String,
 ) -> Result<String, String> {
+    validate_image_url(&url)?;
     let path = crate::cache::cache_path(&url)?;
     if path.exists() {
         return Ok(path.to_string_lossy().into_owned());
@@ -283,6 +306,27 @@ pub async fn download_and_cache(
             .map_err(|e| format!("Failed to write cache: {e}"))?;
     }
     Ok(path.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+pub fn clear_credentials(target: String) -> Result<(), String> {
+    let mut cfg = config::load_config().unwrap_or_default();
+    match target.as_str() {
+        "screenscraper" => {
+            cfg.screenscraper.username = String::new();
+            cfg.screenscraper.password_enc = String::new();
+        }
+        "steamgriddb" => {
+            cfg.steamgriddb.api_key_enc = String::new();
+        }
+        _ => return Err(format!("Unknown credential target: {target}")),
+    }
+    config::save_config(&cfg)
+}
+
+#[tauri::command]
+pub fn get_cache_size() -> Result<u64, String> {
+    crate::cache::get_cache_size()
 }
 
 #[tauri::command]
@@ -375,6 +419,20 @@ pub async fn export_images(
         return Err("ROM name is empty or invalid".to_string());
     }
 
+    // Windows reserved device names (e.g. CON, NUL, COM1) silently redirect to
+    // OS devices instead of creating files, so reject them explicitly.
+    const WINDOWS_RESERVED: &[&str] = &[
+        "CON", "PRN", "AUX", "NUL",
+        "COM0", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+        "LPT0", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    ];
+    if WINDOWS_RESERVED
+        .iter()
+        .any(|&r| safe_name.eq_ignore_ascii_case(r))
+    {
+        return Err(format!("'{safe_name}' is a reserved Windows device name"));
+    }
+
     let entries = vec![
         ExportEntry { image_type: "boxart",     src: selections.boxart,     dest: out.join(format!("{safe_name}.png"))       },
         ExportEntry { image_type: "screenshot", src: selections.screenshot, dest: out.join(format!("{safe_name}.jpg"))       },
@@ -404,11 +462,18 @@ pub async fn export_images(
                 });
             }
             Err(e) => {
+                let msg = match e.kind() {
+                    std::io::ErrorKind::PermissionDenied =>
+                        "Permission denied — check directory is not read-only".to_string(),
+                    std::io::ErrorKind::StorageFull =>
+                        "Disk is full — free up space and try again".to_string(),
+                    _ => e.to_string(),
+                };
                 results.push(ExportFileResult {
                     image_type: entry.image_type.to_string(),
                     dest_path,
                     success: false,
-                    error: Some(e.to_string()),
+                    error: Some(msg),
                 });
             }
         }

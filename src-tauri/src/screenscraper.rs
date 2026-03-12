@@ -170,15 +170,36 @@ fn extract_results(game: SsGame, candidates: Vec<SsGameCandidate>) -> SsResults 
     SsResults { matched_name, candidates, boxart, screenshot, title, menu }
 }
 
-/// Computes CRC32 and MD5 hashes of a file, along with its size in bytes.
-/// This is a synchronous blocking operation — only call from a blocking context
-/// or for small files (typical MAME ROMs are small ZIPs).
+/// Computes CRC32 and MD5 hashes of a file in streaming 64 KB chunks, along with
+/// its size in bytes. Streaming avoids loading the entire ROM into RAM — important
+/// for large images (GBA, PC Engine CD, ISO formats).
+/// Synchronous blocking — only call from a blocking context.
 fn hash_rom(path: &str) -> Result<(u32, String, u64), String> {
-    use md5::{Md5, Digest};
-    let bytes = std::fs::read(path).map_err(|e| format!("Failed to read ROM: {e}"))?;
-    let size = bytes.len() as u64;
-    let crc = crc32fast::hash(&bytes);
-    let md5_bytes = Md5::digest(&bytes);
+    use md5::{Digest, Md5};
+    use std::io::Read;
+
+    let mut file = std::fs::File::open(path).map_err(|e| format!("Failed to read ROM: {e}"))?;
+    let size = file
+        .metadata()
+        .map_err(|e| format!("Failed to stat ROM: {e}"))?
+        .len();
+
+    let mut crc_hasher = crc32fast::Hasher::new();
+    let mut md5_hasher = Md5::new();
+    let mut buf = [0u8; 65536];
+    loop {
+        let n = file
+            .read(&mut buf)
+            .map_err(|e| format!("Failed to read ROM: {e}"))?;
+        if n == 0 {
+            break;
+        }
+        crc_hasher.update(&buf[..n]);
+        md5_hasher.update(&buf[..n]);
+    }
+
+    let crc = crc_hasher.finalize();
+    let md5_bytes = md5_hasher.finalize();
     let md5_hex: String = md5_bytes.iter().map(|b| format!("{b:02x}")).collect();
     Ok((crc, md5_hex, size))
 }
@@ -220,16 +241,25 @@ pub async fn lookup_by_hash(
         ("romnom",      rom_filename),
     ];
 
-    let body = client
+    let resp = client
         .get(INFO_URL)
         .query(&params)
         .send()
         .await
-        .map_err(|e| scrub(e, ss_user, ss_pass))?
+        .map_err(|e| scrub(e, ss_user, ss_pass))?;
+
+    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+        return Err("ScreenScraper login failed — check credentials in Settings".to_string());
+    }
+
+    let body = resp
         .text()
         .await
         .map_err(|e| scrub(e, ss_user, ss_pass))?;
 
+    // ScreenScraper returns HTTP 200 with a body sentinel instead of HTTP error codes
+    // for "not found" and many error conditions. String matching is fragile but is the
+    // only reliable detection method given the undocumented API.
     if body.contains("jeuNotTrouve") || body.contains("Erreur") {
         dev_log!("[SS] hash lookup: no match ({} bytes)", body.len());
         return Ok(None);
@@ -265,12 +295,18 @@ pub async fn fetch_by_game_id(
         ("romtype",     "rom"),
     ];
 
-    let body = client
+    let resp = client
         .get(INFO_URL)
         .query(&params)
         .send()
         .await
-        .map_err(|e| scrub(e, ss_user, ss_pass))?
+        .map_err(|e| scrub(e, ss_user, ss_pass))?;
+
+    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+        return Err("ScreenScraper login failed — check credentials in Settings".to_string());
+    }
+
+    let body = resp
         .text()
         .await
         .map_err(|e| scrub(e, ss_user, ss_pass))?;
@@ -313,12 +349,18 @@ pub async fn search_game(
         recherche, system_id
     );
 
-    let body = client
+    let resp = client
         .get(SEARCH_URL)
         .query(&params)
         .send()
         .await
-        .map_err(|e| scrub(e, ss_user, ss_pass))?
+        .map_err(|e| scrub(e, ss_user, ss_pass))?;
+
+    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+        return Err("ScreenScraper login failed — check credentials in Settings".to_string());
+    }
+
+    let body = resp
         .text()
         .await
         .map_err(|e| scrub(e, ss_user, ss_pass))?;

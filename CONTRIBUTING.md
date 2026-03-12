@@ -50,3 +50,16 @@ cargo check
 # Run unit tests
 cargo test
 ```
+
+## Code Style
+
+**Rust:** Format with `cargo fmt` before committing. Run `cargo clippy` and resolve any warnings.
+
+**TypeScript / CSS:** No formatter is enforced — follow the conventions in the existing files (2-space indent, single quotes in JS, no trailing commas in HTML attributes).
+
+## Pull Request Process
+
+1. Fork the repository and create a branch from `main`
+2. Make your changes and test them in dev mode (`cargo tauri dev`)
+3. Ensure `cargo check`, `cargo test`, and `cargo clippy` all pass (from `src-tauri/`)
+4. Open a PR against `main`, linking any related issues

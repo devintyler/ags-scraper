@@ -4,8 +4,6 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AGSP Scraper</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
@@ -23,22 +21,67 @@
           aria-controls="settings-panel"
           title="Settings"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <circle cx="12" cy="12" r="3"/>
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="3" />
+            <path
+              d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+            />
           </svg>
         </button>
       </div>
       <div class="window-controls">
-        <button type="button" id="win-minimize-btn" class="win-btn" title="Minimize">&#x2212;</button>
-        <button type="button" id="win-maximize-btn" class="win-btn" title="Maximize">&#x25A1;</button>
-        <button type="button" id="win-close-btn" class="win-btn win-btn-close" title="Close">&#x2715;</button>
+        <button
+          type="button"
+          id="win-minimize-btn"
+          class="win-btn"
+          title="Minimize"
+        >
+          &#x2212;
+        </button>
+        <button
+          type="button"
+          id="win-maximize-btn"
+          class="win-btn"
+          title="Maximize"
+        >
+          &#x25A1;
+        </button>
+        <button
+          type="button"
+          id="win-close-btn"
+          class="win-btn win-btn-close"
+          title="Close"
+        >
+          &#x2715;
+        </button>
       </div>
     </header>
 
     <!-- Settings Panel -->
     <section id="settings-panel" class="panel hidden">
-      <h2>Settings</h2>
+      <div class="settings-header">
+        <h2>Settings</h2>
+        <span id="app-version" class="settings-version"></span>
+        <button
+          type="button"
+          id="settings-close-btn"
+          class="settings-close-x"
+          aria-label="Close settings"
+        >
+          &#x2715;
+        </button>
+      </div>
       <form id="settings-form" onsubmit="return false;">
         <div class="field-group">
           <label for="ss-user">ScreenScraper Username</label>
@@ -68,11 +111,16 @@
           />
         </div>
         <div class="form-actions">
-          <button type="button" id="settings-close-btn" class="btn-outline">
-            Close
-          </button>
           <button type="button" id="save-btn">Save</button>
           <span id="status-msg"></span>
+          <button
+            type="button"
+            id="clear-credentials-btn"
+            class="restart-btn"
+            hidden
+          >
+            Clear credentials
+          </button>
         </div>
       </form>
 
@@ -86,6 +134,7 @@
             <span class="cache-row-desc"
               >Thumbnails fetched from SteamGridDB and ScreenScraper</span
             >
+            <span id="cache-size-display" class="cache-row-size"></span>
           </div>
           <button type="button" id="clear-cache-btn" class="btn-outline btn-sm">
             Clear
@@ -112,7 +161,9 @@
         <div class="toggle-row">
           <div class="cache-row-info">
             <span class="cache-row-label">CRT Scanlines</span>
-            <span class="cache-row-desc">Subtle scanline overlay for a retro CRT feel</span>
+            <span class="cache-row-desc"
+              >Subtle scanline overlay for a retro CRT feel</span
+            >
           </div>
           <label class="toggle-switch">
             <input type="checkbox" id="scanlines-toggle" />
@@ -240,6 +291,13 @@
         <div class="scrape-actions">
           <button type="button" id="scrape-btn" disabled>Scrape</button>
           <span id="scrape-status"></span>
+          <a
+            href="#"
+            id="no-intro-link"
+            class="naming-help-link"
+            title="ROM filenames should follow No-Intro naming conventions for best results. For MAME, use the short ROM name (e.g. mspacman)."
+            >Naming help?</a
+          >
         </div>
         <div id="scrape-result" class="scrape-result hidden"></div>
       </section>
@@ -380,7 +438,7 @@
         </div>
         <div class="preview-actions">
           <button type="button" id="confirm-save-btn" disabled>
-            Confirm &amp; Save
+            Confirm &amp; Export
           </button>
           <span id="export-status"></span>
         </div>

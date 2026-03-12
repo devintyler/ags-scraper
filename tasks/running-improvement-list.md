@@ -1,2 +1,1 @@
-- Add Readme, contributing, security, etc.
 - Pull game description from SS?

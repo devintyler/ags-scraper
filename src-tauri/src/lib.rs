@@ -13,8 +13,9 @@ mod screenscraper;
 mod steamgriddb;
 
 use commands::{
-    cleanup_temp_dir, clear_cache, download_and_cache, export_images, fetch_sgdb_images,
-    fetch_ss_images, load_config_cmd, process_image, save_config_cmd, search_game,
+    cleanup_temp_dir, clear_cache, clear_credentials, download_and_cache, export_images,
+    fetch_sgdb_images, fetch_ss_images, get_cache_size, load_config_cmd, process_image,
+    save_config_cmd, search_game,
 };
 
 /// Shared HTTP client held in Tauri state so all commands reuse the connection pool.
@@ -31,13 +32,16 @@ pub fn run() {
     tauri::Builder::default()
         .manage(AppClient(http_client))
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             load_config_cmd,
             save_config_cmd,
+            clear_credentials,
             search_game,
             fetch_sgdb_images,
             fetch_ss_images,
             download_and_cache,
+            get_cache_size,
             clear_cache,
             process_image,
             cleanup_temp_dir,

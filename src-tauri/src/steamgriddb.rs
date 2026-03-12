@@ -45,10 +45,13 @@ pub async fn search_game(client: &Client, term: &str, api_key: &str) -> Result<V
         .header("Authorization", format!("Bearer {}", api_key))
         .send()
         .await
-        .map_err(|e| if e.is_timeout() { TIMEOUT_MSG.to_string() } else { e.to_string() })?
-        .error_for_status()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| if e.is_timeout() { TIMEOUT_MSG.to_string() } else { e.to_string() })?;
 
+    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+        return Err("SteamGridDB API key invalid — check key in Settings".to_string());
+    }
+
+    let resp = resp.error_for_status().map_err(|e| e.to_string())?;
     let body: SearchResponse = resp.json().await.map_err(|e| e.to_string())?;
     if !body.success {
         return Ok(vec![]);
@@ -68,10 +71,13 @@ pub async fn fetch_grids(client: &Client, game_id: u64, api_key: &str) -> Result
         .header("Authorization", format!("Bearer {}", api_key))
         .send()
         .await
-        .map_err(|e| if e.is_timeout() { TIMEOUT_MSG.to_string() } else { e.to_string() })?
-        .error_for_status()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| if e.is_timeout() { TIMEOUT_MSG.to_string() } else { e.to_string() })?;
 
+    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+        return Err("SteamGridDB API key invalid — check key in Settings".to_string());
+    }
+
+    let resp = resp.error_for_status().map_err(|e| e.to_string())?;
     let body: ItemsResponse = resp.json().await.map_err(|e| e.to_string())?;
     if !body.success {
         return Ok(vec![]);
@@ -99,10 +105,13 @@ pub async fn fetch_logos(client: &Client, game_id: u64, api_key: &str) -> Result
         .header("Authorization", format!("Bearer {}", api_key))
         .send()
         .await
-        .map_err(|e| if e.is_timeout() { TIMEOUT_MSG.to_string() } else { e.to_string() })?
-        .error_for_status()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| if e.is_timeout() { TIMEOUT_MSG.to_string() } else { e.to_string() })?;
 
+    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+        return Err("SteamGridDB API key invalid — check key in Settings".to_string());
+    }
+
+    let resp = resp.error_for_status().map_err(|e| e.to_string())?;
     let body: ItemsResponse = resp.json().await.map_err(|e| e.to_string())?;
     if !body.success {
         return Ok(vec![]);

@@ -1,5 +1,6 @@
 const { invoke, convertFileSrc } = window.__TAURI__.core;
 const { open: openDialog } = window.__TAURI__.dialog;
+const { openUrl } = window.__TAURI__.opener;
 
 // ── Constants ──────────────────────────────────────────────────
 // Source identifiers — must match the values sent to the Rust backend.
@@ -67,6 +68,14 @@ function updateSourceUI(sourceChanged = false) {
   ssWarn.hidden = !(isSS && !configState.ssCredSet);
   sgdbWarn.hidden = !(!isSS && !configState.sgdbKeySet);
 
+  // When switching to SS, clear the search term — it's hidden in SS mode and a
+  // stale value from a previous SGDB session should not silently influence SS searches.
+  if (sourceChanged && isSS) {
+    const termEl = document.getElementById("search-term");
+    termEl.value = "";
+    delete termEl.dataset.userEdited;
+  }
+
   // When the user switches to SGDB, auto-fill the search term if it's still empty.
   if (sourceChanged && !isSS && scrapeSession.romStem) {
     const termEl = document.getElementById("search-term");
@@ -94,6 +103,11 @@ document.getElementById("sgdb-warning-link").addEventListener("click", (e) => {
   openSettings();
 });
 
+document.getElementById("no-intro-link").addEventListener("click", async (e) => {
+  e.preventDefault();
+  await openUrl("https://no-intro.org");
+});
+
 // Persist + restore system selection
 const systemSelect = document.getElementById("system-select");
 systemSelect.addEventListener("change", () => {
@@ -118,6 +132,7 @@ systemSelect.addEventListener("mouseleave", () => {
 
 // ── Settings toggle ───────────────────────────────────────────
 function openSettings() {
+  loadCacheSize();
   settingsPanel.classList.remove("hidden");
   flow.classList.add("hidden");
   settingsBtn.classList.add("active");
@@ -145,9 +160,13 @@ document
 function friendlyScrapeError(rawErr) {
   const s = String(rawErr);
   if (s.includes("ScreenScraper credentials not configured"))
-    return "ScreenScraper credentials not set — go to Settings";
+    return 'ScreenScraper credentials not set — <a href="#" class="err-settings-link">go to Settings</a>';
   if (s.includes("SteamGridDB API key not configured"))
-    return "SteamGridDB API key not set — go to Settings";
+    return 'SteamGridDB API key not set — <a href="#" class="err-settings-link">go to Settings</a>';
+  if (s.includes("ScreenScraper login failed"))
+    return 'ScreenScraper login failed — <a href="#" class="err-settings-link">check credentials in Settings</a>';
+  if (s.includes("SteamGridDB API key invalid"))
+    return 'SteamGridDB API key invalid — <a href="#" class="err-settings-link">check key in Settings</a>';
   // Any network/HTTP error (timeout, DNS, connection refused, etc.)
   if (
     s.includes("error sending request") ||
@@ -232,11 +251,20 @@ document.addEventListener("DOMContentLoaded", async () => {
     configState.ssCredSet =
       cfg.screenscraper_pass_set && cfg.screenscraper_user !== "";
     configState.sgdbKeySet = cfg.steamgriddb_key_set;
+    updateClearCredBtns();
   } catch (err) {
     setStatus("Failed to load settings: " + err, true);
   }
   updateSourceUI();
   updateScrapeBtn();
+  loadCacheSize();
+
+  try {
+    const version = await window.__TAURI__.app.getVersion();
+    document.getElementById("app-version").textContent = "v" + version;
+  } catch {
+    // non-critical — leave blank if unavailable
+  }
 });
 
 // ── Scrape session state ───────────────────────────────────────
@@ -417,9 +445,12 @@ function renderScrapeResult(results) {
         ssCandHtml +
         ssNameSearchHtml;
     } else {
+      const currentTerm = escapeHtml(
+        document.getElementById("search-term").value.trim() || scrapeSession.romStem
+      );
       scrapeResult.innerHTML =
         exactBlockHtml +
-        `<div class="match-label">No results found</div>` +
+        `<div class="match-label">No results found for '${currentTerm}'. Try editing the search term above.</div>` +
         ssNameSearchHtml;
     }
     scrapeResult.className = exactBlockHtml
@@ -550,10 +581,18 @@ scrapeResult.addEventListener("click", async (e) => {
       nameSearchBtn.disabled = false;
       nameSearchBtn.textContent = originalLabel;
       const msg = friendlyScrapeError(err);
-      scrapeResult.textContent = msg;
+      scrapeResult.innerHTML = msg;
       scrapeResult.className = "scrape-result error";
       scrapeResult.classList.remove("hidden");
     }
+  }
+});
+
+// Delegated handler for settings links inside scrape error messages.
+scrapeResult.addEventListener("click", (e) => {
+  if (e.target.closest(".err-settings-link")) {
+    e.preventDefault();
+    openSettings();
   }
 });
 
@@ -626,7 +665,7 @@ scrapeBtn.addEventListener("click", async () => {
     const msg = friendlyScrapeError(err);
     scrapeStatus.textContent = "";
     scrapeStatus.className = "";
-    scrapeResult.textContent = msg;
+    scrapeResult.innerHTML = msg;
     scrapeResult.className = "scrape-result error";
     scrapeResult.classList.remove("hidden");
   } finally {
@@ -1110,8 +1149,7 @@ document.getElementById("preview-columns").addEventListener("click", (e) => {
 let pendingExport = null;
 
 function getRomName() {
-  const basename = romPathInput.value.split(/[\\/]/).pop();
-  return basename.replace(/\.[^.]+$/, "");
+  return scrapeSession.romStem;
 }
 
 function buildExportPaths() {
@@ -1255,10 +1293,13 @@ document
     const { selections, romName, outputDir } = pendingExport;
     pendingExport = null;
     const overwriteBtn = document.getElementById("overwrite-confirm-btn");
+    const cancelBtn = document.getElementById("overwrite-cancel-btn");
     overwriteBtn.disabled = true;
+    cancelBtn.disabled = true;
     document.getElementById("overwrite-warning").classList.add("hidden");
     await doExport(selections, romName, outputDir);
     overwriteBtn.disabled = false;
+    cancelBtn.disabled = false;
   });
 
 document
@@ -1295,6 +1336,17 @@ function clearCacheStatus() {
   setCacheStatus("", false);
 }
 
+async function loadCacheSize() {
+  const display = document.getElementById("cache-size-display");
+  if (display) display.textContent = "…";
+  try {
+    const bytes = await invoke("get_cache_size");
+    if (display) display.textContent = bytes === 0 ? "empty" : formatBytes(bytes);
+  } catch {
+    if (display) display.textContent = "";
+  }
+}
+
 function setClearBtnsDisabled(disabled) {
   document.getElementById("clear-cache-btn").disabled = disabled;
   document.getElementById("clear-temp-btn").disabled = disabled;
@@ -1312,6 +1364,8 @@ document
           ? "Downloaded image cache is already empty"
           : `Cleared ${result.files_deleted} file${result.files_deleted !== 1 ? "s" : ""} (${formatBytes(result.bytes_freed)} freed)`;
       setCacheStatus(msg, false);
+      const sizeDisplay = document.getElementById("cache-size-display");
+      if (sizeDisplay) sizeDisplay.textContent = "empty";
     } catch (err) {
       setCacheStatus("Failed to clear cache: " + err, true);
     } finally {
@@ -1329,6 +1383,37 @@ document
     setCacheStatus("Preview temp files cleared", false);
     setClearBtnsDisabled(false);
   });
+
+// ── Clear credentials ──────────────────────────────────────────
+function updateClearCredBtns() {
+  document.getElementById("clear-credentials-btn").hidden =
+    !configState.ssCredSet && !configState.sgdbKeySet;
+}
+
+document.getElementById("clear-credentials-btn").addEventListener("click", async () => {
+  const btn = document.getElementById("clear-credentials-btn");
+  btn.disabled = true;
+  try {
+    if (configState.ssCredSet) {
+      await invoke("clear_credentials", { target: "screenscraper" });
+      document.getElementById("ss-user").value = "";
+      setCredentialField(document.getElementById("ss-pass"), false);
+      configState.ssCredSet = false;
+    }
+    if (configState.sgdbKeySet) {
+      await invoke("clear_credentials", { target: "steamgriddb" });
+      setCredentialField(document.getElementById("sgdb-key"), false);
+      configState.sgdbKeySet = false;
+    }
+    updateClearCredBtns();
+    updateSourceUI();
+    setStatus("Credentials cleared.", false);
+  } catch (err) {
+    setStatus("Error: " + err, true);
+  } finally {
+    btn.disabled = false;
+  }
+});
 
 // ── Save settings ─────────────────────────────────────────────
 document.getElementById("save-btn").addEventListener("click", async () => {
@@ -1354,6 +1439,7 @@ document.getElementById("save-btn").addEventListener("click", async () => {
     configState.ssCredSet =
       passWillBeSaved && document.getElementById("ss-user").value !== "";
     configState.sgdbKeySet = keyWillBeSaved;
+    updateClearCredBtns();
     updateSourceUI();
     setStatus("Settings saved.", false);
   } catch (err) {
