@@ -1,7 +1,2 @@
-- Check if we're caching SGDB results, maybe do the same for SS?
-- Fix icon, it's pixelated
-- Rename app to AGSP Scraper? Or just AGS Scraper?
 - Add Readme, contributing, security, etc.
-- Skip results with no images for SGDB
-- Search term should reset when ROM is changed
 - Pull game description from SS?

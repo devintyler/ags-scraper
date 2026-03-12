@@ -8,6 +8,7 @@
   --color-accent-hover: #A85E20;
   --color-text: #e0e0e0;
   --color-text-muted: #888;
+  --color-icon: #777;
   --color-success:      #2C6956;
   --color-error:        #FF4739;
 
@@ -52,10 +53,16 @@ body {
   background: var(--color-bg);
   color: var(--color-text);
   min-height: 100vh;
+  padding-top: var(--header-height);
 }
 
 /* ── App Header ────────────────────────────────────────────── */
 .app-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -75,6 +82,7 @@ body {
   font-weight: 700;
   letter-spacing: 0.05em;
   color: var(--color-text);
+  flex: 1;
 }
 
 .header-actions {
@@ -83,22 +91,14 @@ body {
   gap: 8px;
 }
 
-.settings-btn {
-  background: none;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  color: var(--color-text-muted);
-  cursor: pointer;
-  font-size: var(--font-size-sm);
-  padding: 5px 12px;
-  transition: color 0.15s, border-color 0.15s;
+.window-controls {
+  display: flex;
+  align-items: stretch;
+  height: var(--header-height);
+  margin-right: -20px;
+  margin-left: 8px;
 }
 
-.settings-btn:hover,
-.settings-btn.active {
-  color: var(--color-text);
-  border-color: var(--color-text-muted);
-}
 
 
 /* ── Step Indicator ────────────────────────────────────────── */
@@ -370,6 +370,68 @@ button.restart-btn {
 
 button.restart-btn:hover:not(:disabled) {
   background: rgba(var(--atari-red-rgb), 0.1);
+  filter: none;
+}
+
+/* Window control buttons — must come after button[type="button"] to override */
+button.win-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 100%;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  color: var(--color-icon);
+  font-size: var(--font-size-base);
+  font-weight: 400;
+  padding: 0;
+  transition: background 0.1s, color 0.1s;
+}
+
+button.win-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+  color: #666;
+  filter: none;
+}
+
+button.win-btn:active:not(:disabled) {
+  filter: none;
+}
+
+#win-maximize-btn {
+  font-size: var(--font-size-lg);
+}
+
+button.win-btn-close:hover:not(:disabled) {
+  background: rgba(var(--atari-red-rgb), 0.12);
+  color: var(--atari-red);
+  filter: none;
+}
+
+button.settings-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius);
+  color: var(--color-icon);
+  padding: 0;
+  transition: color 0.1s, background 0.1s;
+}
+
+button.settings-btn:hover:not(:disabled),
+button.settings-btn.active {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--color-text);
+  filter: none;
+}
+
+button.settings-btn:active:not(:disabled) {
   filter: none;
 }
 

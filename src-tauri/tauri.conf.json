@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "gsp-scraper",
+  "productName": "agsp-scraper",
   "version": "0.1.0",
-  "identifier": "com.gsp-scraper.app",
+  "identifier": "com.agsp-scraper.app",
   "build": {
     "frontendDist": "../ui"
   },
@@ -10,9 +10,10 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "GSP Scraper",
+        "title": "AGSP Scraper",
         "width": 900,
-        "height": 700
+        "height": 700,
+        "decorations": false
       }
     ],
     "security": {

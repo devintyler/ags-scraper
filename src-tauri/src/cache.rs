@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 pub fn cache_dir() -> Result<PathBuf, String> {
     let appdata = std::env::var("APPDATA").map_err(|_| "%APPDATA% not set".to_string())?;
-    Ok(PathBuf::from(appdata).join("gsp-scraper").join("cache"))
+    Ok(PathBuf::from(appdata).join("agsp-scraper").join("cache"))
 }
 
 pub fn cache_path(url: &str) -> Result<PathBuf, String> {

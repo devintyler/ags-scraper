@@ -27,6 +27,27 @@ const scrapeStatus = document.getElementById("scrape-status");
 const scrapeResult = document.getElementById("scrape-result");
 const previewActionsEl = document.querySelector(".preview-actions");
 
+// ── Window controls ────────────────────────────────────────────
+const appWindow = window.__TAURI__.window.getCurrentWindow();
+const winMaxBtn = document.getElementById("win-maximize-btn");
+
+async function syncMaxBtn() {
+  winMaxBtn.title = (await appWindow.isMaximized()) ? "Restore" : "Maximize";
+}
+
+document.getElementById("win-minimize-btn").addEventListener("click", () => appWindow.minimize());
+document.getElementById("win-close-btn").addEventListener("click", () => appWindow.close());
+winMaxBtn.addEventListener("click", async () => {
+  await appWindow.toggleMaximize();
+  await syncMaxBtn();
+});
+document.querySelector(".app-header").addEventListener("dblclick", async (e) => {
+  if (e.target.closest("button")) return;
+  await appWindow.toggleMaximize();
+  await syncMaxBtn();
+});
+syncMaxBtn();
+
 // ── Config state (credential presence, used for inline warnings) ──
 const configState = { ssCredSet: false, sgdbKeySet: false };
 
@@ -267,7 +288,8 @@ document
     scrapeSession.romFilename = basename;
     scrapeSession.romStem = stem;
     const termEl = document.getElementById("search-term");
-    if (!termEl.dataset.userEdited) termEl.value = stem;
+    delete termEl.dataset.userEdited;
+    termEl.value = stem;
 
     // Auto-fill output dir from the ROM's directory only if not already chosen.
     const dir = filePath.substring(0, filePath.search(/[\\/][^\\/]*$/));

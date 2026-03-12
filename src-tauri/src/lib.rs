@@ -1,6 +1,6 @@
 #[cfg(not(target_os = "windows"))]
 compile_error!(
-    "gsp-scraper targets Windows only. \
+    "agsp-scraper targets Windows only. \
      Building on other platforms is not supported. \
      See README for details."
 );

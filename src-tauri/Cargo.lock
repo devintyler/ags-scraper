@@ -9,6 +9,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
+name = "agsp-scraper"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "crc32fast",
+ "image",
+ "md-5",
+ "reqwest 0.12.28",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tokio",
+ "toml 1.0.6+spec-1.1.0",
+ "windows 0.62.2",
+ "zeroize",
+]
+
+[[package]]
 name = "aho-corasick"
 version = "1.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1090,28 +1112,6 @@ dependencies = [
  "glib-sys",
  "libc",
  "system-deps",
-]
-
-[[package]]
-name = "gsp-scraper"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "crc32fast",
- "image",
- "md-5",
- "reqwest 0.12.28",
- "secrecy",
- "serde",
- "serde_json",
- "sha2",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tokio",
- "toml 1.0.6+spec-1.1.0",
- "windows 0.62.2",
- "zeroize",
 ]
 
 [[package]]

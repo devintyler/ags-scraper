@@ -213,26 +213,42 @@ async fn search_game_sgdb(
         });
     }
 
-    let first_id = games[0].id;
-    let matched = GameCandidate { id: first_id, name: games[0].name.clone() };
-    let game_candidates: Vec<GameCandidate> = games[1..]
+    let all_candidates: Vec<GameCandidate> = games
         .iter()
         .map(|g| GameCandidate { id: g.id, name: g.name.clone() })
         .collect();
 
-    let (grids, logos) = tokio::join!(
-        crate::steamgriddb::fetch_grids(client, first_id, api_key),
-        crate::steamgriddb::fetch_logos(client, first_id, api_key),
-    );
-    let grids = grids?;
-    let logos = logos?;
+    // Try up to the first 3 candidates; use the first one that has images.
+    let mut matched: Option<GameCandidate> = None;
+    let mut grids: Vec<ImageCandidate> = vec![];
+    let mut logos: Vec<ImageCandidate> = vec![];
+
+    for game in games.iter().take(3) {
+        let (g, l) = tokio::join!(
+            crate::steamgriddb::fetch_grids(client, game.id, api_key),
+            crate::steamgriddb::fetch_logos(client, game.id, api_key),
+        );
+        let g = g?;
+        let l = l?;
+        if !g.is_empty() || !l.is_empty() {
+            matched = Some(GameCandidate { id: game.id, name: game.name.clone() });
+            grids = g;
+            logos = l;
+            break;
+        }
+    }
+
+    let game_candidates: Vec<GameCandidate> = all_candidates
+        .into_iter()
+        .filter(|c| matched.as_ref().map_or(true, |m| c.id != m.id))
+        .collect();
 
     Ok(SearchResults {
         boxart: grids.clone(),
         screenshot: vec![],
         title: logos,
         menu: grids,
-        matched_game: Some(matched),
+        matched_game: matched,
         game_candidates,
         ss_candidates: vec![],
     })

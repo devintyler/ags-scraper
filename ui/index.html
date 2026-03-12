@@ -3,15 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>GSP Scraper</title>
+    <title>AGSP Scraper</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
     <!-- App Header -->
-    <header class="app-header">
-      <span class="app-title">GSP Scraper</span>
+    <header class="app-header" data-tauri-drag-region>
+      <span class="app-title" data-tauri-drag-region>AGSP Scraper</span>
       <div class="header-actions">
         <button type="button" id="restart-btn" class="restart-btn hidden">
           Reset
@@ -21,9 +21,18 @@
           class="settings-btn"
           aria-expanded="false"
           aria-controls="settings-panel"
+          title="Settings"
         >
-          Settings
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
         </button>
+      </div>
+      <div class="window-controls">
+        <button type="button" id="win-minimize-btn" class="win-btn" title="Minimize">&#x2212;</button>
+        <button type="button" id="win-maximize-btn" class="win-btn" title="Maximize">&#x25A1;</button>
+        <button type="button" id="win-close-btn" class="win-btn win-btn-close" title="Close">&#x2715;</button>
       </div>
     </header>
 

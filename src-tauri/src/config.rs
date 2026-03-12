@@ -36,7 +36,7 @@ pub struct UiConfig {
 pub fn config_path() -> Result<PathBuf, String> {
     let appdata = std::env::var("APPDATA")
         .map_err(|_| "%APPDATA% is not set — cannot locate config directory".to_string())?;
-    Ok(PathBuf::from(appdata).join("gsp-scraper").join("config.toml"))
+    Ok(PathBuf::from(appdata).join("agsp-scraper").join("config.toml"))
 }
 
 pub fn load_config() -> Result<Config, String> {
