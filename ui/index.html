@@ -4,20 +4,27 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>GSP Scraper</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
     <!-- App Header -->
     <header class="app-header">
       <span class="app-title">GSP Scraper</span>
-      <button
-        id="settings-btn"
-        class="settings-btn"
-        aria-expanded="false"
-        aria-controls="settings-panel"
-      >
-        Settings
-      </button>
+      <div class="header-actions">
+        <button type="button" id="restart-btn" class="restart-btn hidden">
+          Reset
+        </button>
+        <button
+          id="settings-btn"
+          class="settings-btn"
+          aria-expanded="false"
+          aria-controls="settings-panel"
+        >
+          Settings
+        </button>
+      </div>
     </header>
 
     <!-- Settings Panel -->
@@ -88,6 +95,22 @@
         </div>
         <span id="cache-status"></span>
       </div>
+
+      <hr class="settings-divider" />
+
+      <div class="settings-section">
+        <h3 class="settings-section-title">Retro Effects</h3>
+        <div class="toggle-row">
+          <div class="cache-row-info">
+            <span class="cache-row-label">CRT Scanlines</span>
+            <span class="cache-row-desc">Subtle scanline overlay for a retro CRT feel</span>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="scanlines-toggle" />
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+      </div>
     </section>
 
     <!-- Step Flow -->
@@ -105,7 +128,7 @@
         <div class="step-connector"></div>
         <div class="step" data-step="2">
           <span class="step-num">3</span>
-          <span class="step-label">Preview</span>
+          <span class="step-label">Export</span>
         </div>
       </nav>
 
