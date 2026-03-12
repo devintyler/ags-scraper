@@ -1,15 +1,30 @@
 /* ── CSS Variables ─────────────────────────────────────────── */
 :root {
   /* Colors */
-  --color-bg: #1a1a2e;
-  --color-surface: #16213e;
-  --color-border: #0f3460;
-  --color-accent: #e94560;
-  --color-accent-hover: #c73652;
+  --color-bg:           #080C10;
+  --color-surface:      #12100C;
+  --color-border:       #261B0E;
+  --color-accent:       #C37331;
+  --color-accent-hover: #A85E20;
   --color-text: #e0e0e0;
   --color-text-muted: #888;
-  --color-success: #4caf50;
-  --color-error: #e94560;
+  --color-success:      #2C6956;
+  --color-error:        #FF4739;
+
+  /* Full Atari palette */
+  --atari-orange: #C37331;
+  --atari-yellow: #E6DC3D;
+  --atari-green:  #2C6956;
+  --atari-sky:    #459FED;
+  --atari-sky-hover: #67B3F2;
+  --atari-blue:   #2457B6;
+  --atari-pink:   #F971A1;
+  --atari-red:    #FF4739;
+
+  /* RGB channels for rgba() usage */
+  --color-accent-rgb: 195, 115, 49;
+  --atari-sky-rgb:    69, 159, 237;
+  --atari-red-rgb:    255, 71, 57;
 
   /* Typography */
   --font-family: system-ui, -apple-system, sans-serif;
@@ -45,16 +60,27 @@ body {
   align-items: center;
   justify-content: space-between;
   background: var(--color-surface);
-  border-bottom: 2px solid var(--color-border);
+  border-bottom: 3px solid transparent;
+  border-image: linear-gradient(
+    to right,
+    var(--atari-red), var(--atari-orange), var(--atari-yellow), var(--atari-green), var(--atari-sky), var(--atari-blue), var(--atari-pink)
+  ) 1;
   height: var(--header-height);
   padding: 0 20px;
 }
 
 .app-title {
+  font-family: 'Orbitron', sans-serif;
   font-size: var(--font-size-base);
   font-weight: 700;
   letter-spacing: 0.05em;
   color: var(--color-text);
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .settings-btn {
@@ -73,6 +99,7 @@ body {
   color: var(--color-text);
   border-color: var(--color-text-muted);
 }
+
 
 /* ── Step Indicator ────────────────────────────────────────── */
 .step-nav {
@@ -264,12 +291,36 @@ input[type="password"] {
 input[type="text"]:focus,
 input[type="password"]:focus {
   border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px rgba(var(--color-accent-rgb), 0.15);
 }
 
 input[type="text"]:focus-visible,
 input[type="password"]:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
+}
+
+select {
+  width: 100%;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: var(--font-size-base);
+  padding: 8px 32px 8px 12px;
+  outline: none;
+  appearance: none;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23888888' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+
+select:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px rgba(var(--color-accent-rgb), 0.15);
 }
 
 .form-actions {
@@ -305,6 +356,21 @@ button[type="submit"]:active:not(:disabled) {
 button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Overrides for restart button — must come after general button[type="button"] rule */
+button.restart-btn {
+  background: none;
+  border: 1px solid var(--atari-red);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: 400;
+  padding: 5px 12px;
+}
+
+button.restart-btn:hover:not(:disabled) {
+  background: rgba(var(--atari-red-rgb), 0.1);
+  filter: none;
 }
 
 /* ── Status Message ────────────────────────────────────────── */
@@ -441,6 +507,7 @@ button:disabled {
   border-radius: var(--radius);
   margin-bottom: 4px;
   font-size: var(--font-size-sm);
+  color: var(--color-text);
 }
 
 .exact-match-block-label {
@@ -579,12 +646,37 @@ button.picker-tab.active {
   font-weight: 600;
 }
 
+/* Per-tab Atari colors */
+button.picker-tab[data-tab="boxart"].active      { border-bottom-color: var(--atari-sky);    color: var(--atari-sky); }
+button.picker-tab[data-tab="screenshot"].active  { border-bottom-color: var(--atari-orange); color: var(--atari-orange); }
+button.picker-tab[data-tab="title"].active       { border-bottom-color: var(--atari-yellow); color: var(--atari-yellow); }
+button.picker-tab[data-tab="menu"].active        { border-bottom-color: var(--atari-pink);   color: var(--atari-pink); }
+
 button.picker-tab.resolved {
-  color: var(--color-success);
+  color: var(--atari-green);
 }
 
 button.picker-tab.resolved.active {
-  border-bottom-color: var(--color-success);
+  border-bottom-color: var(--atari-green);
+  color: var(--atari-green);
+}
+
+button.picker-tab.skipped {
+  color: var(--color-text-muted);
+}
+
+button.picker-tab.skipped.active {
+  border-bottom-color: var(--color-text-muted);
+  color: var(--color-text-muted);
+}
+
+/* Skipped overrides per-tab active colors */
+button.picker-tab[data-tab="boxart"].skipped.active,
+button.picker-tab[data-tab="screenshot"].skipped.active,
+button.picker-tab[data-tab="title"].skipped.active,
+button.picker-tab[data-tab="menu"].skipped.active {
+  border-bottom-color: var(--color-text-muted);
+  color: var(--color-text-muted);
 }
 
 /* ── Tab panels ────────────────────────────────────────────── */
@@ -632,7 +724,7 @@ button.picker-tab.resolved.active {
 
 .grid-cell.selected {
   border-color: var(--color-accent);
-  box-shadow: 0 0 0 1px var(--color-accent);
+  box-shadow: 0 0 0 1px var(--color-accent), 0 0 16px rgba(var(--color-accent-rgb), 0.55);
 }
 
 .grid-cell.load-error {
@@ -654,9 +746,9 @@ button.picker-tab.resolved.active {
   position: absolute;
   inset: 0;
   background: linear-gradient(90deg,
-      transparent 25%,
-      rgba(255, 255, 255, 0.07) 50%,
-      transparent 75%);
+      var(--color-surface) 25%,
+      rgba(var(--color-accent-rgb), 0.07) 50%,
+      var(--color-surface) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
 }
@@ -678,21 +770,6 @@ button.picker-tab.resolved.active {
   }
 }
 
-/* Source badge */
-.source-badge {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  background: rgba(0, 0, 0, 0.65);
-  border-radius: var(--radius);
-  color: var(--color-text-muted);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  padding: 2px 5px;
-  pointer-events: none;
-  z-index: 1;
-}
 
 /* Title/logo tab: landscape aspect ratio */
 #tab-panel-title .grid-cell {
@@ -791,14 +868,15 @@ button.crop-preset-btn:hover:not(:disabled) {
 }
 
 button.crop-preset-btn.active {
-  background: var(--color-accent);
-  border-color: var(--color-accent);
-  color: var(--color-text);
+  background: var(--atari-sky);
+  border-color: var(--atari-sky);
+  color: #fff;
+  box-shadow: 0 0 6px rgba(var(--atari-sky-rgb), 0.3);
 }
 
 button.crop-preset-btn.active:hover:not(:disabled) {
-  background: var(--color-accent-hover);
-  border-color: var(--color-accent-hover);
+  background: var(--atari-sky-hover);
+  border-color: var(--atari-sky-hover);
 }
 
 /* ── Preview step ──────────────────────────────────────────── */
@@ -953,4 +1031,82 @@ button.crop-preset-btn.active:hover:not(:disabled) {
 #export-status {
   color: var(--color-error);
   font-size: var(--font-size-sm);
+}
+
+/* ── CRT Scanline Overlay ──────────────────────────────────── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 2px,
+    rgba(0, 0, 0, 0.09) 2px,
+    rgba(0, 0, 0, 0.09) 4px
+  );
+}
+
+body.scanlines-disabled::before { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  body::before { display: none; }
+}
+
+/* ── Toggle Switch ─────────────────────────────────────────── */
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+}
+
+.toggle-row + .toggle-row {
+  border-top: 1px solid var(--color-border);
+}
+
+.toggle-switch {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.toggle-track {
+  position: absolute;
+  inset: 0;
+  background: var(--color-border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.toggle-track::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+
+.toggle-switch input:checked + .toggle-track {
+  background: var(--color-accent);
+}
+
+.toggle-switch input:checked + .toggle-track::after {
+  transform: translateX(16px);
 }

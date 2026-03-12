@@ -53,6 +53,12 @@ function updateSourceUI(sourceChanged = false) {
   }
 }
 
+function setSourceDisabled(disabled) {
+  document.querySelectorAll('input[name="source"]').forEach((r) => {
+    r.disabled = disabled;
+  });
+}
+
 document.querySelectorAll('input[name="source"]').forEach((radio) => {
   radio.addEventListener("change", () => updateSourceUI(true));
 });
@@ -71,6 +77,22 @@ document.getElementById("sgdb-warning-link").addEventListener("click", (e) => {
 const systemSelect = document.getElementById("system-select");
 systemSelect.addEventListener("change", () => {
   localStorage.setItem("lastSystemId", systemSelect.value);
+});
+
+// Read palette colours from CSS variables so they stay in sync with the stylesheet.
+const ATARI_BRIGHT = ["--atari-sky", "--atari-yellow", "--atari-pink", "--atari-red", "--atari-orange"]
+  .map((v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim());
+systemSelect.addEventListener("mouseenter", () => {
+  const hex = ATARI_BRIGHT[Math.floor(Math.random() * ATARI_BRIGHT.length)];
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  systemSelect.style.borderColor = hex;
+  systemSelect.style.boxShadow = `0 0 0 2px rgba(${r}, ${g}, ${b}, 0.2)`;
+});
+systemSelect.addEventListener("mouseleave", () => {
+  systemSelect.style.borderColor = "";
+  systemSelect.style.boxShadow = "";
 });
 
 // ── Settings toggle ───────────────────────────────────────────
@@ -155,6 +177,17 @@ document.addEventListener("DOMContentLoaded", async () => {
     el.dataset.defaultPlaceholder = el.placeholder;
   }
 
+  // Restore retro effects preferences.
+  const scanlinesToggle = document.getElementById("scanlines-toggle");
+  const scanlinesEnabled = localStorage.getItem("scanlinesEnabled") !== "false";
+  scanlinesToggle.checked = scanlinesEnabled;
+  document.body.classList.toggle("scanlines-disabled", !scanlinesEnabled);
+  scanlinesToggle.addEventListener("change", () => {
+    const on = scanlinesToggle.checked;
+    document.body.classList.toggle("scanlines-disabled", !on);
+    localStorage.setItem("scanlinesEnabled", on);
+  });
+
   // Restore last system selection.
   const savedSystem = localStorage.getItem("lastSystemId");
   if (savedSystem !== null) {
@@ -186,18 +219,20 @@ document.addEventListener("DOMContentLoaded", async () => {
 });
 
 // ── Scrape session state ───────────────────────────────────────
-// allGames:    full SGDB game list from last search (matched + alternatives)
-// currentId:  SGDB game ID currently displayed
-// seq:         monotonic counter — responses from stale in-flight requests are discarded
-// romPath:     full path to selected ROM file
-// romFilename: full filename with extension, e.g. "asteroid.zip"
-// romStem:     filename without extension, e.g. "asteroid"
+// allGames:        full SGDB game list from last search (matched + alternatives)
+// currentId:       SGDB game ID currently displayed
+// seq:             monotonic counter — responses from stale in-flight requests are discarded
+// romPath:         full path to selected ROM file
+// romFilename:     full filename with extension, e.g. "asteroid.zip"
+// romStem:         filename without extension, e.g. "asteroid"
+// displayedResults: results object currently shown in scrapeResult (used by delegated click handlers)
 const scrapeSession = {
   allGames: [],
   currentId: null,
   ssCandidates: [],
   currentSsId: null,
   exactResults: null,
+  displayedResults: null,
   seq: 0,
   romPath: "",
   romFilename: "",
@@ -274,6 +309,7 @@ function buildSsNameSearchHtml(hasMatch) {
 }
 
 function renderScrapeResult(results) {
+  scrapeSession.displayedResults = results;
   const matched = results.matched_game;
   const source = getSelectedSource();
   const isSS = source === SOURCE_SCREENSCRAPER;
@@ -333,8 +369,11 @@ function renderScrapeResult(results) {
       exact.title.length +
       exact.menu.length
     : 0;
+  // Only show for SS — SS uses hash lookup so "exact match" has a meaningful distinction
+  // from a name-search or candidate result. For SGDB, the initial result is just the
+  // top-ranked guess, not an authoritative match, so there's nothing special to preserve.
   const exactBlockHtml =
-    exactDiffers && exactImages > 0
+    isSS && exactDiffers && exactImages > 0
       ? `<div class="exact-match-block">
         <div class="exact-match-block-label">Previous exact match</div>
         <div class="exact-match-block-body">
@@ -365,9 +404,6 @@ function renderScrapeResult(results) {
       ? "scrape-result"
       : "scrape-result error";
     scrapeResult.classList.remove("hidden");
-    scrapeResult
-      .querySelector(".exact-pick-btn")
-      ?.addEventListener("click", () => openPicker(exact));
     return;
   }
 
@@ -392,13 +428,7 @@ function renderScrapeResult(results) {
       ssCandHtml +
       ssNameSearchHtml;
     scrapeResult.className = "scrape-result success";
-    document
-      .getElementById("pick-images-btn")
-      .addEventListener("click", () => openPicker(results));
   }
-  scrapeResult
-    .querySelector(".exact-pick-btn")
-    ?.addEventListener("click", () => openPicker(exact));
   scrapeResult.classList.remove("hidden");
 }
 
@@ -407,87 +437,101 @@ function escapeHtml(str) {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
-// ── Alternative game pick ──────────────────────────────────────
+// ── Scrape result area — single delegated handler ──────────────
+// Handles: Pick Images button, exact-match pick, alt-match candidates, SS name search.
 scrapeResult.addEventListener("click", async (e) => {
-  const btn = e.target.closest(".alt-match-btn");
-  if (!btn) return;
-
-  // dataset.name is decoded by the HTML parser, so it holds the raw game name.
-  const gameName = btn.dataset.name;
-  const originalLabel = btn.textContent;
-  btn.disabled = true;
-  btn.textContent = "Loading…";
-
-  try {
-    if (btn.classList.contains("ss-cand-btn")) {
-      // ScreenScraper candidate — fetch by SS game ID
-      const gameId = btn.dataset.ssId;
-      const results = await invoke("fetch_ss_images", { gameId });
-      scrapeSession.currentSsId = gameId;
-      if (results.matched_game && btn.dataset.systemName) {
-        results.matched_game.name += ` [${btn.dataset.systemName}]`;
-      }
-      renderScrapeResult(results);
-    } else {
-      // SGDB candidate — fetch by SGDB numeric ID
-      const gameId = parseInt(btn.dataset.id, 10);
-      if (Number.isNaN(gameId)) {
-        btn.disabled = false;
-        btn.textContent = originalLabel;
-        return;
-      }
-      const results = await invoke("fetch_sgdb_images", { gameId, gameName });
-      scrapeSession.currentId = gameId;
-      renderScrapeResult(results);
-    }
-  } catch (err) {
-    btn.disabled = false;
-    btn.textContent = originalLabel;
-    setStatus("Failed to load images: " + err, true);
+  // "Pick Images →" button — open picker with currently displayed results
+  if (e.target.closest("#pick-images-btn")) {
+    if (scrapeSession.displayedResults) openPicker(scrapeSession.displayedResults);
+    return;
   }
-});
 
-// ── SS name-search from result area ───────────────────────────
-scrapeResult.addEventListener("click", async (e) => {
-  const btn = e.target.closest(".ss-name-search-btn");
-  if (!btn) return;
+  // "Pick Images →" button on the previous exact-match block
+  if (e.target.closest(".exact-pick-btn")) {
+    if (scrapeSession.exactResults) openPicker(scrapeSession.exactResults);
+    return;
+  }
 
-  const container = btn.closest(".ss-name-search");
-  const input = container?.querySelector(".ss-name-search-input");
-  const searchTerm = input?.value.trim() || scrapeSession.romStem;
-  if (!searchTerm) return;
-  scrapeSession.ssSearchTerm = searchTerm;
+  // Alternative game candidate buttons (SGDB or SS)
+  const altBtn = e.target.closest(".alt-match-btn");
+  if (altBtn) {
+    // dataset.name is decoded by the HTML parser, so it holds the raw game name.
+    const gameName = altBtn.dataset.name;
+    const originalLabel = altBtn.textContent;
+    altBtn.disabled = true;
+    altBtn.textContent = "Loading…";
 
-  const originalLabel = btn.textContent;
-  btn.disabled = true;
-  btn.textContent = "Searching…";
-
-  try {
-    const rawSystemId = parseInt(systemSelect.value, 10);
-    const results = await invoke("search_game", {
-      romPath: "", // skip hash lookup — name search only
-      romFilename: scrapeSession.romFilename,
-      searchTerm,
-      systemId: !Number.isNaN(rawSystemId) ? rawSystemId : null,
-      source: SOURCE_SCREENSCRAPER,
-    });
-    if (results.matched_game) {
-      scrapeSession.allGames = [];
-      scrapeSession.currentId = null;
+    try {
+      if (altBtn.classList.contains("ss-cand-btn")) {
+        // ScreenScraper candidate — fetch by SS game ID
+        const gameId = altBtn.dataset.ssId;
+        const results = await invoke("fetch_ss_images", { gameId });
+        scrapeSession.currentSsId = gameId;
+        if (results.matched_game && altBtn.dataset.systemName) {
+          results.matched_game.name += ` [${altBtn.dataset.systemName}]`;
+        }
+        renderScrapeResult(results);
+      } else {
+        // SGDB candidate — fetch by SGDB numeric ID
+        const gameId = parseInt(altBtn.dataset.id, 10);
+        if (Number.isNaN(gameId)) {
+          altBtn.disabled = false;
+          altBtn.textContent = originalLabel;
+          return;
+        }
+        const results = await invoke("fetch_sgdb_images", { gameId, gameName });
+        scrapeSession.currentId = gameId;
+        renderScrapeResult(results);
+      }
+    } catch (err) {
+      altBtn.disabled = false;
+      altBtn.textContent = originalLabel;
+      setStatus("Failed to load images: " + err, true);
     }
-    scrapeSession.ssCandidates = results.ss_candidates || [];
-    scrapeSession.currentSsId = null;
-    renderScrapeResult(results);
-  } catch (err) {
-    btn.disabled = false;
-    btn.textContent = originalLabel;
-    const msg = friendlyScrapeError(err);
-    scrapeResult.textContent = msg;
-    scrapeResult.className = "scrape-result error";
-    scrapeResult.classList.remove("hidden");
+    return;
+  }
+
+  // SS name-search button
+  const nameSearchBtn = e.target.closest(".ss-name-search-btn");
+  if (nameSearchBtn) {
+    const container = nameSearchBtn.closest(".ss-name-search");
+    const input = container?.querySelector(".ss-name-search-input");
+    const searchTerm = input?.value.trim() || scrapeSession.romStem;
+    if (!searchTerm) return;
+    scrapeSession.ssSearchTerm = searchTerm;
+
+    const originalLabel = nameSearchBtn.textContent;
+    nameSearchBtn.disabled = true;
+    nameSearchBtn.textContent = "Searching…";
+
+    try {
+      const rawSystemId = parseInt(systemSelect.value, 10);
+      const results = await invoke("search_game", {
+        romPath: "", // skip hash lookup — name search only
+        romFilename: scrapeSession.romFilename,
+        searchTerm,
+        systemId: !Number.isNaN(rawSystemId) ? rawSystemId : null,
+        source: SOURCE_SCREENSCRAPER,
+      });
+      if (results.matched_game) {
+        scrapeSession.allGames = [];
+        scrapeSession.currentId = null;
+      }
+      scrapeSession.ssCandidates = results.ss_candidates || [];
+      scrapeSession.currentSsId = null;
+      renderScrapeResult(results);
+    } catch (err) {
+      nameSearchBtn.disabled = false;
+      nameSearchBtn.textContent = originalLabel;
+      const msg = friendlyScrapeError(err);
+      scrapeResult.textContent = msg;
+      scrapeResult.className = "scrape-result error";
+      scrapeResult.classList.remove("hidden");
+    }
   }
 });
 
@@ -512,6 +556,7 @@ scrapeBtn.addEventListener("click", async () => {
   const seq = ++scrapeSession.seq;
 
   scrapeBtn.disabled = true;
+  setSourceDisabled(true);
   scrapeStatus.textContent = "Scraping…";
   scrapeStatus.className = "scrape-spinner";
   scrapeResult.classList.add("hidden");
@@ -563,7 +608,10 @@ scrapeBtn.addEventListener("click", async () => {
     scrapeResult.className = "scrape-result error";
     scrapeResult.classList.remove("hidden");
   } finally {
-    if (scrapeSession.seq === seq) scrapeBtn.disabled = false;
+    if (scrapeSession.seq === seq) {
+      scrapeBtn.disabled = false;
+      setSourceDisabled(false);
+    }
   }
 });
 
@@ -591,6 +639,39 @@ function navigate(step) {
     else if (n === step) s.classList.add("active");
   });
   document.getElementById(`step-${step}`).classList.add("active");
+  document.getElementById("restart-btn").classList.toggle("hidden", step === 0);
+}
+
+async function restartApp() {
+  // Invalidate any in-flight scrape so its finally block won't re-enable the button.
+  scrapeSession.seq++;
+  setSourceDisabled(false);
+  scrapeStatus.textContent = "";
+  scrapeStatus.className = "";
+
+  await invoke("cleanup_temp_dir").catch(() => {});
+  resetPickerUI();
+  resetExportState();
+  romPathInput.value = "";
+  const termEl = document.getElementById("search-term");
+  termEl.value = "";
+  delete termEl.dataset.userEdited;
+  scrapeResult.classList.add("hidden");
+  scrapeResult.textContent = "";
+  scrapeSession.allGames = [];
+  scrapeSession.currentId = null;
+  scrapeSession.ssCandidates = [];
+  scrapeSession.currentSsId = null;
+  scrapeSession.exactResults = null;
+  scrapeSession.displayedResults = null;
+  scrapeSession.romPath = "";
+  scrapeSession.romFilename = "";
+  scrapeSession.romStem = "";
+  scrapeSession.ssSearchTerm = "";
+  // Output dir is intentionally kept across resets — users typically scrape
+  // multiple ROMs to the same folder and shouldn't have to re-select it.
+  updateScrapeBtn();
+  navigate(0);
 }
 
 // ── Picker functions ───────────────────────────────────────────
@@ -634,12 +715,23 @@ function openPicker(results) {
 function renderPickerTabs() {
   let allResolved = true;
   for (const tab of TABS) {
-    const resolved = pickerSession.selections[tab] !== null;
-    if (!resolved) allResolved = false;
+    const isResolved = pickerSession.selections[tab] !== null;
+    const isSkipped = pickerSession.selections[tab] === SELECTION_SKIP;
+    if (!isResolved) allResolved = false;
     const btn = document.querySelector(`.picker-tab[data-tab="${tab}"]`);
     if (btn) {
-      btn.textContent = TAB_NAMES[tab] + (resolved ? " ✓" : "");
-      btn.classList.toggle("resolved", resolved);
+      if (isSkipped) {
+        btn.textContent = TAB_NAMES[tab] + " ⊘";
+        btn.classList.remove("resolved");
+        btn.classList.add("skipped");
+      } else if (isResolved) {
+        btn.textContent = TAB_NAMES[tab] + " ✓";
+        btn.classList.add("resolved");
+        btn.classList.remove("skipped");
+      } else {
+        btn.textContent = TAB_NAMES[tab];
+        btn.classList.remove("resolved", "skipped");
+      }
     }
   }
   const label = allResolved ? "Preview" : "Next Selection";
@@ -679,16 +771,23 @@ function populateGrid(tab) {
     return;
   }
 
-  if (countEl)
-    countEl.textContent = `${candidates.length} image${candidates.length !== 1 ? "s" : ""}`;
+  if (countEl) {
+    const sources = [...new Set(candidates.map((c) => c.source))];
+    const sourceLabel =
+      sources.length === 1
+        ? sources[0] === SOURCE_STEAMGRIDDB
+          ? "SteamGridDB"
+          : sources[0] === SOURCE_SCREENSCRAPER
+            ? "ScreenScraper"
+            : null
+        : null;
+    const countText = `${candidates.length} image${candidates.length !== 1 ? "s" : ""}`;
+    countEl.textContent = sourceLabel ? `${countText} · ${sourceLabel}` : countText;
+  }
 
   for (const candidate of candidates) {
     const cell = document.createElement("div");
     cell.className = "grid-cell loading";
-    const badge = document.createElement("span");
-    badge.className = "source-badge";
-    badge.textContent = candidate.source === SOURCE_STEAMGRIDDB ? "SGDB" : "SS";
-    cell.appendChild(badge);
     grid.appendChild(cell);
     downloadAndShowImage(cell, candidate.url, tab);
   }
@@ -834,8 +933,14 @@ function buildPreviewCol(tab) {
   col.appendChild(imgWrap);
 
   const dims = document.createElement("div");
-  dims.className = "preview-col-dims hidden";
   dims.id = `preview-col-dims-${tab}`;
+  if (tab === "screenshot") {
+    dims.className = "preview-col-dims hidden";
+  } else {
+    dims.className = "preview-col-dims";
+    const { w, h } = OUTPUT_DIMS[tab];
+    dims.textContent = `${w} × ${h}`;
+  }
   col.appendChild(dims);
 
   if (isPresetTab) {
@@ -883,7 +988,7 @@ function restorePreviewImage(tab, tempPath) {
   if (!imgEl) return;
   imgEl.onload = () => {
     imgEl.classList.remove("hidden");
-    if (dimsEl) {
+    if (dimsEl && tab === "screenshot") {
       dimsEl.textContent = `${imgEl.naturalWidth} × ${imgEl.naturalHeight}`;
       dimsEl.classList.remove("hidden");
     }
@@ -911,7 +1016,7 @@ async function triggerPreviewProcess(tab) {
 
   if (spinnerEl) spinnerEl.classList.remove("hidden");
   if (imgEl) imgEl.classList.add("dimmed");
-  if (dimsEl) dimsEl.classList.add("hidden");
+  if (dimsEl && tab === "screenshot") dimsEl.classList.add("hidden");
   imgWrap?.querySelector(".preview-col-error")?.remove();
 
   try {
@@ -928,7 +1033,7 @@ async function triggerPreviewProcess(tab) {
       imgEl.onload = () => {
         if (spinnerEl) spinnerEl.classList.add("hidden");
         imgEl.classList.remove("hidden", "dimmed");
-        if (dimsEl) {
+        if (dimsEl && tab === "screenshot") {
           dimsEl.textContent = `${imgEl.naturalWidth} × ${imgEl.naturalHeight}`;
           dimsEl.classList.remove("hidden");
         }
@@ -1136,33 +1241,15 @@ document
 
 document
   .getElementById("scrape-another-btn")
-  .addEventListener("click", async () => {
-    await invoke("cleanup_temp_dir").catch(() => {});
-    resetPickerUI();
-    resetExportState();
-    // Reset scrape form (output dir is intentionally kept for the next scrape)
-    romPathInput.value = "";
-    const termEl = document.getElementById("search-term");
-    termEl.value = "";
-    delete termEl.dataset.userEdited;
-    scrapeResult.classList.add("hidden");
-    scrapeResult.textContent = "";
-    scrapeSession.allGames = [];
-    scrapeSession.currentId = null;
-    scrapeSession.ssCandidates = [];
-    scrapeSession.currentSsId = null;
-    scrapeSession.exactResults = null;
-    scrapeSession.romPath = "";
-    scrapeSession.romFilename = "";
-    scrapeSession.romStem = "";
-    scrapeSession.ssSearchTerm = "";
-    updateScrapeBtn();
-    navigate(0);
-  });
+  .addEventListener("click", () => restartApp());
+
+document
+  .getElementById("restart-btn")
+  .addEventListener("click", () => restartApp());
 
 // ── Picker back button ─────────────────────────────────────────
+// No temp cleanup needed here — process_image only runs from the preview step.
 document.getElementById("picker-back-btn").addEventListener("click", () => {
-  invoke("cleanup_temp_dir").catch(() => {});
   pickerSession.results = null;
   resetPickerUI();
   renderPickerTabs();
