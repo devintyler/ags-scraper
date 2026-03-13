@@ -1,0 +1,578 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AGSP Scraper — Artwork for your Gamestation Pro ROMs</title>
+    <meta
+      name="description"
+      content="AGSP Scraper automatically fetches boxart, screenshots, and title screens for your Atari Gamestation Pro MAME ROMs from ScreenScraper and SteamGridDB."
+    />
+    <link rel="icon" href="assets/favicon.ico" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <!-- ── Header ──────────────────────────────────────────────── -->
+    <header class="site-header">
+      <div class="container">
+        <a href="#hero" class="header-logo">AGSP SCRAPER</a>
+        <nav>
+          <ul class="header-nav">
+            <li><a href="#screenshots">Screenshots</a></li>
+            <li><a href="#about">Features</a></li>
+            <li><a href="#how-to-use">How to Use</a></li>
+            <li><a href="#download">Download</a></li>
+            <li><a href="#faq">FAQ</a></li>
+          </ul>
+        </nav>
+      </div>
+    </header>
+
+    <!-- ── Hero ────────────────────────────────────────────────── -->
+    <section id="hero">
+      <div class="container">
+        <h1 class="hero-title">AGSP SCRAPER</h1>
+        <p class="hero-tagline">Artwork for your Atari Gamestation Pro ROMs.</p>
+        <div class="hero-actions">
+          <a
+            id="hero-download-btn"
+            href="https://github.com/devintyler/ags-scraper/releases/latest"
+            class="btn-download"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              aria-hidden="true"
+            >
+              <path
+                d="M8 1v9M4 7l4 4 4-4M2 13h12"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+            Download
+          </a>
+          <a
+            href="https://github.com/devintyler/ags-scraper"
+            class="btn-github"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path
+                d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"
+              />
+            </svg>
+            View on GitHub
+          </a>
+        </div>
+        <div class="version-badge">
+          Latest release: <span id="version-tag">loading…</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Screenshots ──────────────────────────────────────────── -->
+    <section id="screenshots">
+      <div class="container">
+        <h2 class="section-title">Screenshots</h2>
+        <div class="screenshots-grid">
+          <div class="screenshot-item">
+            <img
+              src="assets/images/app-screen-1.png"
+              alt="Scrape view — select a ROM file, output folder, and art source"
+              width="900"
+              height="700"
+              loading="lazy"
+            />
+            <p class="screenshot-caption">
+              <span class="screenshot-step">01</span>Select your ROM file,
+              output folder, and art source — then hit Scrape
+            </p>
+          </div>
+          <div class="screenshot-item">
+            <img
+              src="assets/images/app-screen-2.png"
+              alt="Image picker — browse boxart, screenshots, title, and menu art candidates"
+              width="900"
+              height="700"
+              loading="lazy"
+            />
+            <p class="screenshot-caption">
+              <span class="screenshot-step">02</span>Browse multiple candidates
+              per art type and pick the one you want
+            </p>
+          </div>
+          <div class="screenshot-item">
+            <img
+              src="assets/images/app-screen-3.png"
+              alt="Export view — preview all four processed images before saving"
+              width="900"
+              height="700"
+              loading="lazy"
+            />
+            <p class="screenshot-caption">
+              <span class="screenshot-step">03</span>Preview the processed
+              output across all four art types, then export
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── About + Features ─────────────────────────────────────── -->
+    <section id="about">
+      <div class="container">
+        <div class="about-grid">
+          <div class="about-text">
+            <h2 class="section-title">What is AGSP Scraper?</h2>
+            <p>
+              AGSP Scraper fetches boxart, screenshots, title screens, and menu
+              art for your AGSP ROMs and automatically renames & resizes them to
+              the exact pixel dimensions the Atari Gamestation Pro expects.
+            </p>
+            <p>
+              It searches
+              <a
+                href="https://www.screenscraper.fr"
+                target="_blank"
+                rel="noopener"
+                >ScreenScraper</a
+              >
+              and
+              <a
+                href="https://www.steamgriddb.com"
+                target="_blank"
+                rel="noopener"
+                >SteamGridDB</a
+              >
+              , lets you choose from multiple candidates for each art type, and
+              writes the finished images directly to your output folder.
+            </p>
+            <p>No telemetry, all FOSS.</p>
+            <div class="platform-note">
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 88 88"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path
+                  d="M0 12.4L35.7 7.6V42H0zm40.3-5.5L88 0v42H40.3zm-4.6 35.4V78L0 73.4V42.3zm44.6-.1V88L40.3 81V42.3z"
+                />
+              </svg>
+              Windows 10 / 11 only
+            </div>
+          </div>
+
+          <div>
+            <h2 class="section-title" style="margin-bottom: 20px">Features</h2>
+            <ul class="features-list">
+              <li>
+                <span class="feature-icon" aria-hidden="true">👾</span>
+                <span
+                  >Searches ScreenScraper and SteamGridDB for boxart,
+                  screenshots, title screens, and menu art</span
+                >
+              </li>
+              <li>
+                <span class="feature-icon" aria-hidden="true">👾</span>
+                <span
+                  >Side-by-side image picker with multiple candidates per art
+                  type</span
+                >
+              </li>
+              <li>
+                <span class="feature-icon" aria-hidden="true">👾</span>
+                <span
+                  >Auto-resizes and crops to AGSP-compatible formats (236×322
+                  boxart, 362×278 screenshots, etc.)</span
+                >
+              </li>
+              <li>
+                <span class="feature-icon" aria-hidden="true">👾</span>
+                <span
+                  >Preview before export — see exactly what will be written to
+                  disk</span
+                >
+              </li>
+              <li>
+                <span class="feature-icon" aria-hidden="true">👾</span>
+                <span
+                  >Credentials encrypted with Windows DPAPI — nothing ever
+                  leaves your machine</span
+                >
+              </li>
+              <li>
+                <span class="feature-icon" aria-hidden="true">👾</span>
+                <span
+                  >Portable <code class="inline-code">.exe</code> — no
+                  installer, no admin rights, just download and run</span
+                >
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── How to Use ────────────────────────────────────────────── -->
+    <section id="how-to-use">
+      <div class="container">
+        <h2 class="section-title">How to Use</h2>
+        <ol class="steps-list">
+          <li>
+            <div class="step-num">1</div>
+            <div class="step-body">
+              <strong>Download and run the .exe</strong>
+              <span>No installer needed — double-click to launch.</span>
+            </div>
+          </li>
+          <li>
+            <div class="step-num">2</div>
+            <div class="step-body">
+              <strong>Enter your credentials in Settings</strong>
+              <span>
+                Add your free
+                <a
+                  href="https://www.screenscraper.fr/index.php?action=newcompte"
+                  target="_blank"
+                  rel="noopener"
+                  >ScreenScraper</a
+                >
+                account and/or a
+                <a
+                  href="https://www.steamgriddb.com/profile/preferences/api"
+                  target="_blank"
+                  rel="noopener"
+                  >SteamGridDB API key</a
+                >.
+              </span>
+            </div>
+          </li>
+          <li>
+            <div class="step-num">3</div>
+            <div class="step-body">
+              <strong>Select your ROM file and output folder</strong>
+              <span
+                >The ROM filename becomes the output filename — no manual
+                renaming required.</span
+              >
+            </div>
+          </li>
+          <li>
+            <div class="step-num">4</div>
+            <div class="step-body">
+              <strong>Browse and pick artwork</strong>
+              <span
+                >Use the four-tab image picker (Boxart, Screenshot, Title, Menu)
+                to choose from multiple candidates.</span
+              >
+            </div>
+          </li>
+          <li>
+            <div class="step-num">5</div>
+            <div class="step-body">
+              <strong>Confirm and save</strong>
+              <span
+                >Preview the processed images, then hit Confirm — files are
+                written directly to your output folder.</span
+              >
+            </div>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- ── Download (anchor) ─────────────────────────────────────── -->
+    <section id="download">
+      <div class="container">
+        <h2 class="section-title" style="margin-bottom: 8px">Download</h2>
+        <p class="section-subtitle">Free and open source.</p>
+        <div style="display: flex; justify-content: center">
+          <div class="download-card">
+            <a
+              id="download-btn"
+              href="https://github.com/devintyler/ags-scraper/releases/latest"
+              class="btn-download"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 16 16"
+                fill="none"
+                aria-hidden="true"
+              >
+                <path
+                  d="M8 1v9M4 7l4 4 4-4M2 13h12"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+              Download Latest
+            </a>
+            <p class="system-req">
+              Requires Windows 10 or 11 (64-bit)<br />
+              WebView2 runtime — usually pre-installed on Windows 10/11.<br />
+              If the app doesn't open, install it from
+              <a
+                href="https://developer.microsoft.com/en-us/microsoft-edge/webview2/"
+                target="_blank"
+                rel="noopener"
+                >Microsoft's site</a
+              >.
+            </p>
+            <a
+              class="releases-link"
+              href="https://github.com/devintyler/ags-scraper/releases"
+              target="_blank"
+              rel="noopener"
+            >
+              View all releases on GitHub &rarr;
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── FAQ ──────────────────────────────────────────────────── -->
+    <section id="faq">
+      <div class="container">
+        <h2 class="section-title">FAQ</h2>
+        <div class="faq-list">
+          <div class="faq-item">
+            <p class="faq-q">Do I need an account?</p>
+            <p class="faq-a">
+              A free
+              <a
+                href="https://www.screenscraper.fr/index.php?action=newcompte"
+                target="_blank"
+                rel="noopener"
+                >ScreenScraper account</a
+              >
+              and
+              <a
+                href="https://www.steamgriddb.com/profile/preferences/api"
+                target="_blank"
+                rel="noopener"
+                >SteamGridDB API key</a
+              >
+              is needed to scrape.
+            </p>
+          </div>
+          <div class="faq-item">
+            <p class="faq-q">What ROMs does it support?</p>
+            <p class="faq-a">
+              AGSP Scraper is built to support the common ROMs supported by
+              AGSP. The output filenames and image dimensions are tuned for the
+              AGSP's art folder conventions. If you'd like to support more ROMs,
+              contribute to the repo!
+            </p>
+          </div>
+          <div class="faq-item">
+            <p class="faq-q">Does it work on Mac or Linux?</p>
+            <p class="faq-a">
+              Windows only for now. The credential encryption relies on Windows
+              DPAPI, and the Gamestation Pro is a Windows-adjacent device
+              workflow. A cross-platform build isn't currently planned, but feel
+              free to contribute.
+            </p>
+          </div>
+          <div class="faq-item">
+            <p class="faq-q">Is it safe to use?</p>
+            <p class="faq-a">
+              Yes. AGSP Scraper is
+              <a
+                href="https://github.com/devintyler/ags-scraper"
+                target="_blank"
+                rel="noopener"
+                >open source (GPLv3)</a
+              >, so you can read every line. Credentials are stored locally
+              using Windows DPAPI — they never leave your machine. There is no
+              telemetry, no analytics, and no account required to use the app
+              itself.
+            </p>
+          </div>
+          <div class="faq-item">
+            <p class="faq-q">
+              The art doesn't look right — can I pick a different image?
+            </p>
+            <p class="faq-a">
+              Absolutely. The image picker shows multiple candidates for each
+              art type (boxart, screenshot, title, and menu). If the first
+              result isn't what you want, just click another thumbnail. You can
+              also adjust the crop position (top, center, or bottom) for boxart
+              and menu art. If there's still a problem,
+              <a
+                href="https://github.com/devintyler/ags-scraper/issues"
+                target="_blank"
+                rel="noopener"
+                >file an issue on GitHub</a
+              >.
+            </p>
+          </div>
+          <div class="faq-item">
+            <p class="faq-q">Will it overwrite existing art files?</p>
+            <p class="faq-a">
+              AGSP Scraper checks for existing files before exporting. If any
+              output file already exists in the selected folder, it will warn
+              you and ask for confirmation before overwriting.
+            </p>
+          </div>
+          <div class="faq-item">
+            <p class="faq-q">Did you use AI?</p>
+            <p class="faq-a">
+              Like I do in my day job (and really most devs these days), I used
+              it to help me code, but I did not "vibe code" this project. I'm
+              new to Rust & Tauri, so any and all feedback or suggestions are
+              welcome via
+              <a
+                href="https://github.com/devintyler/ags-scraper"
+                target="_blank"
+                rel="noopener"
+                >GitHub</a
+              >.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Disclaimer ────────────────────────────────────────────── -->
+    <section id="disclaimer">
+      <div class="container">
+        <h2 class="section-title">Disclaimer</h2>
+        <p class="disclaimer-text">
+          AGSP Scraper does not provide, host, or endorse ROM files of any kind.
+          It is not affiliated with MyArcade, Atari, ScreenScraper.fr, or
+          SteamGridDB. It was built by a fan who wanted retro gaming to be more
+          fun and accessible. Obtaining and using ROMs is entirely the user's
+          own responsibility.
+          <br />
+          <br />
+          I did my best to focus on security, but like all open-source products
+          I recommend reading through the code before using. I am always around
+          for questions via GitHub.
+        </p>
+      </div>
+    </section>
+
+    <!-- ── Footer ────────────────────────────────────────────────── -->
+    <footer class="site-footer">
+      <div class="container">
+        <div class="footer-inner">
+          <div class="footer-license">
+            <a
+              href="https://github.com/devintyler/ags-scraper/blob/main/LICENSE"
+              target="_blank"
+              rel="noopener"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 16 16"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path
+                  d="M8.75.75a.75.75 0 0 0-1.5 0V2h-.984c-.305 0-.604.08-.869.23l-1.288.737A.25.25 0 0 1 3.983 3H1.75a.75.75 0 0 0 0 1.5h.428L.066 9.192a.75.75 0 0 0 .154.838l.53-.53-.53.53v.001l.002.002.002.002.006.006.016.015.045.04a3.514 3.514 0 0 0 .686.45A4.492 4.492 0 0 0 3 11c.88 0 1.556-.22 2.023-.454a3.515 3.515 0 0 0 .686-.45l.045-.04.016-.015.006-.006.002-.002.001-.002L5.25 9.5l-.53.53a.75.75 0 0 0 .154-.838L2.77 4.5h1.213a1.75 1.75 0 0 0 .874-.233l1.288-.737a.25.25 0 0 1 .125-.03h.484V13h-2.5a.75.75 0 0 0 0 1.5h6.5a.75.75 0 0 0 0-1.5h-2.5V3.5h.984a.25.25 0 0 1 .125.03l1.288.738c.278.16.594.232.874.232h1.213l-2.104 4.692a.75.75 0 0 0 .154.838l.53-.53-.53.53v.001l.002.002.002.002.006.006.016.015.045.04a3.516 3.516 0 0 0 .686.45C13.444 10.78 14.12 11 15 11a4.493 4.493 0 0 0 2.023-.454 3.516 3.516 0 0 0 .686-.45l.045-.04.015-.015.007-.006.002-.002.001-.002-.529-.531.53.53a.75.75 0 0 0 .154-.838L15.77 4.5h.48a.75.75 0 0 0 0-1.5h-2.233a.25.25 0 0 1-.124-.03l-1.289-.738A1.75 1.75 0 0 0 11.73 2H10.75V.75Z"
+                />
+              </svg>
+              GPL v3 License
+            </a>
+          </div>
+          <div class="footer-github">
+            <a
+              href="https://github.com/devintyler/ags-scraper"
+              target="_blank"
+              rel="noopener"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 16 16"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path
+                  d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"
+                />
+              </svg>
+              devintyler/ags-scraper
+            </a>
+          </div>
+          <div class="footer-credit">Griddled by WisestWaffle</div>
+        </div>
+        <p class="footer-copy">&copy; 2026 devintyler</p>
+      </div>
+    </footer>
+
+    <!-- ── Dynamic Download Button ───────────────────────────────── -->
+    <script>
+      (function () {
+        var API =
+          "https://api.github.com/repos/devintyler/ags-scraper/releases/latest";
+        var FALLBACK =
+          "https://github.com/devintyler/ags-scraper/releases/latest";
+        var buttons = [
+          document.getElementById("hero-download-btn"),
+          document.getElementById("download-btn"),
+        ];
+        var versionEl = document.getElementById("version-tag");
+
+        function useFallback() {
+          if (versionEl) versionEl.textContent = "see GitHub";
+          buttons.forEach(function (btn) {
+            if (btn) btn.href = FALLBACK;
+          });
+        }
+
+        var controller = new AbortController();
+        var timeout = setTimeout(function () {
+          controller.abort();
+          useFallback();
+        }, 8000);
+
+        fetch(API, { signal: controller.signal })
+          .then(function (r) {
+            return r.json();
+          })
+          .then(function (release) {
+            clearTimeout(timeout);
+            var tag = release.tag_name || "";
+            var asset = (release.assets || []).find(function (a) {
+              return a.name && a.name.endsWith(".exe");
+            });
+            if (versionEl) {
+              versionEl.textContent = tag || "—";
+            }
+            if (asset && asset.browser_download_url) {
+              buttons.forEach(function (btn) {
+                if (!btn) return;
+                btn.href = asset.browser_download_url;
+                btn.childNodes[btn.childNodes.length - 1].textContent =
+                  " Download " + tag;
+              });
+            } else {
+              useFallback();
+            }
+          })
+          .catch(function () {
+            clearTimeout(timeout);
+            useFallback();
+          });
+      })();
+    </script>
+  </body>
+</html>
