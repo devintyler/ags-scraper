@@ -68,6 +68,11 @@ function updateSourceUI(sourceChanged = false) {
   ssWarn.hidden = !(isSS && !configState.ssCredSet);
   sgdbWarn.hidden = !(!isSS && !configState.sgdbKeySet);
 
+  const bulkWarn = document.getElementById("bulk-cred-warning");
+  if (bulkWarn) {
+    bulkWarn.hidden = configState.ssCredSet;
+  }
+
   // When switching to SS, clear the search term — it's hidden in SS mode and a
   // stale value from a previous SGDB session should not silently influence SS searches.
   if (sourceChanged && isSS) {
@@ -80,6 +85,10 @@ function updateSourceUI(sourceChanged = false) {
   if (sourceChanged && !isSS && scrapeSession.romStem) {
     const termEl = document.getElementById("search-term");
     if (!termEl.dataset.userEdited) termEl.value = scrapeSession.romStem;
+  }
+
+  if (typeof currentAppMode !== "undefined" && currentAppMode === "bulk") {
+    loadScreenScraperQuota();
   }
 }
 
@@ -99,6 +108,11 @@ document.getElementById("ss-warning-link").addEventListener("click", (e) => {
 });
 
 document.getElementById("sgdb-warning-link").addEventListener("click", (e) => {
+  e.preventDefault();
+  openSettings();
+});
+
+document.getElementById("bulk-warning-link")?.addEventListener("click", (e) => {
   e.preventDefault();
   openSettings();
 });
@@ -130,22 +144,62 @@ systemSelect.addEventListener("mouseleave", () => {
   systemSelect.style.boxShadow = "";
 });
 
+// ── Modal Alert Dialog ─────────────────────────────────────────
+function showModalAlert(title, message, confirmText = "Open Settings", onConfirm = null) {
+  const modalOverlay = document.getElementById("modal-overlay");
+  const titleEl = document.getElementById("modal-title");
+  const msgEl = document.getElementById("modal-message");
+  const confirmBtn = document.getElementById("modal-confirm-btn");
+  const cancelBtn = document.getElementById("modal-cancel-btn");
+  const closeBtn = document.getElementById("modal-close-x");
+
+  titleEl.textContent = title;
+  msgEl.textContent = message;
+  confirmBtn.textContent = confirmText;
+
+  function closeModal() {
+    modalOverlay.classList.add("hidden");
+    confirmBtn.onclick = null;
+    cancelBtn.onclick = null;
+    closeBtn.onclick = null;
+  }
+
+  confirmBtn.onclick = () => {
+    closeModal();
+    if (onConfirm) onConfirm();
+  };
+  cancelBtn.onclick = closeModal;
+  closeBtn.onclick = closeModal;
+
+  modalOverlay.classList.remove("hidden");
+}
+
 // ── Settings toggle ───────────────────────────────────────────
 function openSettings() {
   loadCacheSize();
   settingsPanel.classList.remove("hidden");
   flow.classList.add("hidden");
+  document.getElementById("mode-toggle-container")?.classList.add("hidden");
   settingsBtn.classList.add("active");
   settingsBtn.setAttribute("aria-expanded", "true");
   clearCacheStatus();
+  if (!configState.ssCredSet) {
+    setTimeout(() => {
+      document.getElementById("ss-user")?.focus();
+    }, 50);
+  }
 }
 
 function closeSettings() {
   settingsPanel.classList.add("hidden");
   flow.classList.remove("hidden");
+  document.getElementById("mode-toggle-container")?.classList.remove("hidden");
   settingsBtn.classList.remove("active");
   settingsBtn.setAttribute("aria-expanded", "false");
   clearCacheStatus();
+  if (typeof currentAppMode !== "undefined" && currentAppMode === "bulk") {
+    loadScreenScraperQuota();
+  }
 }
 
 settingsBtn.addEventListener("click", () => {
@@ -302,14 +356,31 @@ document
       title: "Select ROM",
       multiple: false,
       filters: [
-        { name: "ROM", extensions: ["zip", "rom", "bin", "cue", "iso"] },
+        {
+          name: "Retro Game ROMs",
+          extensions: [
+            "a26", "a52", "a78", "nes", "sfc", "smc", "fig", "swc",
+            "bin", "md", "gen", "smd", "sms", "gg", "gb", "gbc", "gba",
+            "pce", "sgx", "zip", "7z", "rom", "cue", "iso", "chd", "lnx"
+          ],
+        },
+        { name: "All Files", extensions: ["*"] },
       ],
     });
     if (!selected) return;
     const filePath = typeof selected === "string" ? selected : selected[0];
     romPathInput.value = filePath;
 
-    // Auto-populate search term from filename (strip extension).
+    // Auto-detect system from path and extension
+    try {
+      const detectedSystem = await invoke("auto_detect_rom_system", { path: filePath });
+      if (detectedSystem !== null && detectedSystem !== undefined) {
+        systemSelect.value = detectedSystem.toString();
+        localStorage.setItem("lastSystemId", systemSelect.value);
+      }
+    } catch (_) {}
+
+    // Auto-populate search term from filename (strip extension and dump tags).
     const basename = filePath.split(/[\\/]/).pop();
     const stem = basename.replace(/\.[^.]+$/, "");
     scrapeSession.romPath = filePath;
@@ -317,7 +388,15 @@ document
     scrapeSession.romStem = stem;
     const termEl = document.getElementById("search-term");
     delete termEl.dataset.userEdited;
-    termEl.value = stem;
+
+    // Clean tags like (USA) or [!] for search, while preserving exact filename for export
+    let cleanTerm = stem.replace(/\([^)]*\)/g, "").replace(/\[[^\]]*\]/g, "").trim();
+    if (cleanTerm.endsWith(", The")) {
+      cleanTerm = "The " + cleanTerm.slice(0, -5).trim();
+    } else if (cleanTerm.endsWith(", A")) {
+      cleanTerm = "A " + cleanTerm.slice(0, -3).trim();
+    }
+    termEl.value = cleanTerm || stem;
 
     // Auto-fill output dir from the ROM's directory only if not already chosen.
     const dir = filePath.substring(0, filePath.search(/[\\/][^\\/]*$/));
@@ -611,6 +690,26 @@ document.getElementById("step-0").addEventListener("keydown", (e) => {
 
 // ── Main view — scrape ─────────────────────────────────────────
 scrapeBtn.addEventListener("click", async () => {
+  const source = getSelectedSource();
+  if (source === SOURCE_SCREENSCRAPER && !configState.ssCredSet) {
+    showModalAlert(
+      "ScreenScraper Credentials Required",
+      "ScreenScraper requires an active account to match ROMs and download box art, screenshots, and title screens. Please enter your ScreenScraper username and password in Settings to proceed.",
+      "Open Settings",
+      () => openSettings()
+    );
+    return;
+  }
+  if (source === SOURCE_STEAMGRIDDB && !configState.sgdbKeySet) {
+    showModalAlert(
+      "SteamGridDB API Key Required",
+      "SteamGridDB requires an API key to scrape artwork. Please enter your SteamGridDB API key in Settings to proceed.",
+      "Open Settings",
+      () => openSettings()
+    );
+    return;
+  }
+
   const romPath = romPathInput.value.trim();
   const termEl = document.getElementById("search-term");
 
@@ -701,6 +800,7 @@ function navigate(step) {
   });
   document.getElementById(`step-${step}`).classList.add("active");
   document.getElementById("restart-btn").classList.toggle("hidden", step === 0);
+  document.getElementById("mode-toggle-container")?.classList.toggle("hidden", step !== 0);
 }
 
 async function restartApp() {
@@ -1447,4 +1547,508 @@ document.getElementById("save-btn").addEventListener("click", async () => {
   } finally {
     btn.disabled = false;
   }
+});
+
+// ── Mode Switcher & Bulk Scraping Engine ──────────────────────
+const modeSingleBtn = document.getElementById("mode-single-btn");
+const modeBulkBtn = document.getElementById("mode-bulk-btn");
+const singleModeView = document.getElementById("single-mode-view");
+const bulkModeView = document.getElementById("bulk-mode-view");
+const singleStepNav = document.getElementById("single-step-nav");
+
+let currentAppMode = "single"; // "single" | "bulk"
+
+function setAppMode(mode) {
+  currentAppMode = mode;
+  if (mode === "single") {
+    modeSingleBtn.classList.add("active");
+    modeBulkBtn.classList.remove("active");
+    singleModeView.classList.remove("hidden");
+    bulkModeView.classList.add("hidden");
+    singleStepNav.classList.remove("hidden");
+  } else {
+    modeBulkBtn.classList.add("active");
+    modeSingleBtn.classList.remove("active");
+    singleModeView.classList.add("hidden");
+    bulkModeView.classList.remove("hidden");
+    singleStepNav.classList.add("hidden");
+    loadScreenScraperQuota();
+  }
+}
+
+modeSingleBtn?.addEventListener("click", () => setAppMode("single"));
+modeBulkBtn?.addEventListener("click", () => setAppMode("bulk"));
+
+// Destination radio toggle
+const destAlongsideRadio = document.getElementById("dest-alongside");
+const destCustomRadio = document.getElementById("dest-custom");
+const bulkCustomDestRow = document.getElementById("bulk-custom-dest-row");
+const bulkCustomOutputDir = document.getElementById("bulk-custom-output-dir");
+
+function updateDestUI() {
+  bulkCustomDestRow.classList.toggle("hidden", destAlongsideRadio.checked);
+}
+destAlongsideRadio?.addEventListener("change", updateDestUI);
+destCustomRadio?.addEventListener("change", updateDestUI);
+
+// Bulk scan state
+const bulkState = {
+  rootFolder: "",
+  scannedResult: null,
+  filteredRoms: [],
+  isRunning: false,
+  isPaused: false,
+  shouldCancel: false,
+  stats: { saved: 0, skipped: 0, error: 0 },
+};
+
+const bulkFolderPath = document.getElementById("bulk-folder-path");
+const bulkBrowseBtn = document.getElementById("bulk-browse-btn");
+const bulkRecursive = document.getElementById("bulk-recursive");
+const bulkSkipExisting = document.getElementById("bulk-skip-existing");
+const bulkOutputBrowseBtn = document.getElementById("bulk-output-browse-btn");
+const bulkSystemFilter = document.getElementById("bulk-system-filter");
+const bulkArtBoxart = document.getElementById("bulk-art-boxart");
+const bulkArtScreenshot = document.getElementById("bulk-art-screenshot");
+const bulkArtTitle = document.getElementById("bulk-art-title");
+const bulkArtMenu = document.getElementById("bulk-art-menu");
+
+const bulkScanSummary = document.getElementById("bulk-scan-summary");
+const bulkSummaryCount = document.getElementById("bulk-summary-count");
+const bulkSummaryStatus = document.getElementById("bulk-summary-status");
+const bulkSystemsBadges = document.getElementById("bulk-systems-badges");
+
+const bulkStartBtn = document.getElementById("bulk-start-btn");
+const bulkPauseBtn = document.getElementById("bulk-pause-btn");
+const bulkCancelBtn = document.getElementById("bulk-cancel-btn");
+const bulkStatusIndicator = document.getElementById("bulk-status-indicator");
+
+const bulkProgressSection = document.getElementById("bulk-progress-section");
+const bulkProgressBar = document.getElementById("bulk-progress-bar");
+const bulkCurrentItem = document.getElementById("bulk-current-item");
+const bulkProgressPct = document.getElementById("bulk-progress-pct");
+const statSavedCount = document.getElementById("stat-saved-count");
+const statSkippedCount = document.getElementById("stat-skipped-count");
+const statErrorCount = document.getElementById("stat-error-count");
+const bulkLogEntries = document.getElementById("bulk-log-entries");
+const bulkQuotaCard = document.getElementById("bulk-quota-card");
+const bulkQuotaText = document.getElementById("bulk-quota-text");
+const bulkRefreshQuotaBtn = document.getElementById("bulk-refresh-quota-btn");
+
+async function loadScreenScraperQuota() {
+  if (typeof currentAppMode !== "undefined" && currentAppMode !== "bulk") return;
+  const source = getSelectedSource();
+  if (source !== SOURCE_SCREENSCRAPER || !configState.ssCredSet) {
+    bulkQuotaCard?.classList.add("hidden");
+    return;
+  }
+  bulkQuotaCard?.classList.remove("hidden");
+  if (bulkQuotaText) {
+    bulkQuotaText.textContent = "Checking quota…";
+    bulkQuotaText.style.color = "var(--color-text-muted)";
+  }
+
+  try {
+    const quota = await invoke("get_ss_user_quota");
+    const maxRequests = Number(quota.maxRequestsPerDay ?? quota.max_requests_per_day ?? 0);
+    const requestsToday = Number(quota.requestsToday ?? quota.requests_today ?? 0);
+    const remaining = Number(quota.remaining ?? Math.max(0, maxRequests - requestsToday));
+    const maxThreads = Number(quota.maxThreads ?? quota.max_threads ?? 1);
+
+    if (maxRequests > 0) {
+      bulkQuotaText.textContent = `${remaining.toLocaleString()} / ${maxRequests.toLocaleString()} requests remaining (${requestsToday.toLocaleString()} used today, max ${maxThreads} threads)`;
+      if (remaining <= 0) {
+        bulkQuotaText.style.color = "var(--atari-red)";
+      } else if (remaining < 500) {
+        bulkQuotaText.style.color = "var(--atari-yellow)";
+      } else {
+        bulkQuotaText.style.color = "#7ee0b8";
+      }
+    } else {
+      bulkQuotaText.textContent = `${requestsToday.toLocaleString()} requests used today`;
+      bulkQuotaText.style.color = "var(--color-text)";
+    }
+  } catch (err) {
+    if (bulkQuotaText) {
+      bulkQuotaText.textContent = `Unavailable (${err.toString()})`;
+      bulkQuotaText.style.color = "var(--color-text-muted)";
+    }
+  }
+}
+
+bulkRefreshQuotaBtn?.addEventListener("click", () => {
+  loadScreenScraperQuota();
+});
+
+function isTransientError(errStr) {
+  if (!errStr) return false;
+  const s = String(errStr).toLowerCase();
+  return (
+    s.includes("rate_limit") ||
+    s.includes("too many requests") ||
+    s.includes("timed out") ||
+    s.includes("timeout") ||
+    s.includes("error sending request") ||
+    s.includes("connection reset") ||
+    s.includes("connection refused") ||
+    s.includes("502") ||
+    s.includes("503") ||
+    s.includes("504")
+  );
+}
+
+// Browse bulk root folder
+bulkBrowseBtn?.addEventListener("click", async () => {
+  const selected = await openDialog({
+    title: "Select Games Directory",
+    directory: true,
+  });
+  if (!selected) return;
+  const folder = typeof selected === "string" ? selected : selected[0];
+  bulkFolderPath.value = folder;
+  bulkState.rootFolder = folder;
+  await triggerBulkScan();
+});
+
+// Browse custom output folder
+bulkOutputBrowseBtn?.addEventListener("click", async () => {
+  const selected = await openDialog({
+    title: "Select Artwork Output Directory",
+    directory: true,
+  });
+  if (!selected) return;
+  bulkCustomOutputDir.value = typeof selected === "string" ? selected : selected[0];
+  if (bulkState.rootFolder) {
+    await triggerBulkScan();
+  }
+});
+
+bulkRecursive?.addEventListener("change", async () => {
+  if (bulkState.rootFolder) await triggerBulkScan();
+});
+
+bulkSystemFilter?.addEventListener("change", () => {
+  filterScannedRoms();
+});
+
+async function triggerBulkScan() {
+  if (!bulkState.rootFolder) return;
+  bulkStartBtn.disabled = true;
+  bulkStatusIndicator.textContent = "Scanning directory…";
+  bulkStatusIndicator.className = "scrape-spinner";
+
+  try {
+    const customDir = destCustomRadio.checked && bulkCustomOutputDir.value.trim() ? bulkCustomOutputDir.value.trim() : null;
+    const res = await invoke("scan_rom_directory", {
+      rootPath: bulkState.rootFolder,
+      recursive: bulkRecursive.checked,
+      customOutputDir: customDir,
+    });
+    bulkState.scannedResult = res;
+    renderScanSummary(res);
+    filterScannedRoms();
+  } catch (err) {
+    bulkSummaryCount.textContent = "Scan Error";
+    bulkSummaryStatus.textContent = err.toString();
+    bulkScanSummary.classList.remove("hidden");
+  } finally {
+    bulkStatusIndicator.textContent = "";
+    bulkStatusIndicator.className = "";
+  }
+}
+
+function renderScanSummary(res) {
+  bulkScanSummary.classList.remove("hidden");
+  bulkSummaryCount.textContent = `${res.total_roms.toLocaleString()} ROMs found`;
+  bulkSummaryStatus.textContent = `${res.needs_art.toLocaleString()} needing artwork, ${res.already_complete.toLocaleString()} complete`;
+
+  bulkSystemsBadges.innerHTML = "";
+  for (const [sysName, count] of Object.entries(res.systems_found)) {
+    const pill = document.createElement("span");
+    pill.className = "system-pill";
+    pill.innerHTML = `${sysName} <span class="system-pill-count">${count}</span>`;
+    bulkSystemsBadges.appendChild(pill);
+  }
+}
+
+function filterScannedRoms() {
+  if (!bulkState.scannedResult) {
+    bulkStartBtn.disabled = true;
+    return;
+  }
+  const selectedFilter = bulkSystemFilter.value;
+  let roms = bulkState.scannedResult.roms;
+  if (selectedFilter !== "auto") {
+    const filterId = parseInt(selectedFilter, 10);
+    roms = roms.filter((r) => r.system_id === filterId);
+  }
+  bulkState.filteredRoms = roms;
+  bulkStartBtn.disabled = roms.length === 0;
+  bulkStartBtn.textContent = `Start Bulk Scrape (${roms.length.toLocaleString()} games)`;
+}
+
+// Logging helper
+function appendBulkLog(title, badgeText, detail, badgeClass) {
+  const entry = document.createElement("div");
+  entry.className = "log-entry";
+
+  const badge = document.createElement("span");
+  badge.className = `log-badge ${badgeClass}`;
+  badge.textContent = badgeText;
+
+  const bodySpan = document.createElement("div");
+  bodySpan.className = "log-body";
+
+  const titleSpan = document.createElement("span");
+  titleSpan.className = "log-title";
+  titleSpan.textContent = title;
+  bodySpan.appendChild(titleSpan);
+
+  if (detail) {
+    const detailSpan = document.createElement("span");
+    detailSpan.className = "log-detail";
+    detailSpan.textContent = ` — ${detail}`;
+    bodySpan.appendChild(detailSpan);
+  }
+
+  entry.appendChild(badge);
+  entry.appendChild(bodySpan);
+
+  bulkLogEntries.appendChild(entry);
+  bulkLogEntries.scrollTop = bulkLogEntries.scrollHeight;
+}
+
+// Bulk scrape execution
+bulkStartBtn?.addEventListener("click", async () => {
+  if (bulkState.isRunning) return;
+
+  const source = getSelectedSource();
+  if (source === SOURCE_SCREENSCRAPER && !configState.ssCredSet) {
+    showModalAlert(
+      "ScreenScraper Credentials Required",
+      "ScreenScraper requires an active account to match ROMs and download box art, screenshots, and title screens. Please enter your ScreenScraper username and password in Settings to proceed.",
+      "Open Settings",
+      () => openSettings()
+    );
+    return;
+  }
+  if (source === SOURCE_STEAMGRIDDB && !configState.sgdbKeySet) {
+    showModalAlert(
+      "SteamGridDB API Key Required",
+      "SteamGridDB requires an API key to scrape artwork. Please enter your SteamGridDB API key in Settings to proceed.",
+      "Open Settings",
+      () => openSettings()
+    );
+    return;
+  }
+
+  const roms = bulkState.filteredRoms;
+  if (!roms || roms.length === 0) return;
+
+  // Reset state
+  bulkState.isRunning = true;
+  bulkState.isPaused = false;
+  bulkState.shouldCancel = false;
+  bulkState.stats = { saved: 0, skipped: 0, error: 0 };
+
+  statSavedCount.textContent = "0";
+  statSkippedCount.textContent = "0";
+  statErrorCount.textContent = "0";
+  bulkLogEntries.innerHTML = "";
+
+  bulkProgressSection.classList.remove("hidden");
+  bulkStartBtn.classList.add("hidden");
+  bulkPauseBtn.classList.remove("hidden");
+  bulkPauseBtn.textContent = "Pause";
+  bulkCancelBtn.classList.remove("hidden");
+  bulkBrowseBtn.disabled = true;
+  bulkRecursive.disabled = true;
+  bulkSystemFilter.disabled = true;
+
+  const useAlongside = destAlongsideRadio.checked;
+  const customOut = bulkCustomOutputDir.value.trim();
+  const skipExisting = bulkSkipExisting.checked;
+  const saveBoxart = bulkArtBoxart.checked;
+  const saveScreenshot = bulkArtScreenshot.checked;
+  const saveTitle = bulkArtTitle.checked;
+  const saveMenu = bulkArtMenu.checked;
+  const systemOverrideVal = bulkSystemFilter.value;
+  const systemOverride = systemOverrideVal !== "auto" ? parseInt(systemOverrideVal, 10) : null;
+
+  for (let i = 0; i < roms.length; i++) {
+    if (bulkState.shouldCancel) break;
+
+    while (bulkState.isPaused && !bulkState.shouldCancel) {
+      bulkStatusIndicator.textContent = "Paused";
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    if (bulkState.shouldCancel) break;
+
+    const rom = roms[i];
+    const pct = Math.round(((i + 1) / roms.length) * 100);
+    bulkProgressBar.style.width = `${pct}%`;
+    bulkProgressPct.textContent = `${pct}%`;
+    bulkCurrentItem.textContent = `[${i + 1}/${roms.length}] ${rom.filename}`;
+    bulkStatusIndicator.textContent = `Processing…`;
+
+    // Determine output directory
+    let outputDir = "";
+    if (useAlongside) {
+      outputDir = rom.dir_path;
+    } else {
+      const relParent = rom.rel_path.includes("\\")
+        ? rom.rel_path.substring(0, rom.rel_path.lastIndexOf("\\"))
+        : (rom.rel_path.includes("/") ? rom.rel_path.substring(0, rom.rel_path.lastIndexOf("/")) : "");
+      outputDir = relParent ? `${customOut}\\${relParent}` : customOut;
+    }
+
+    const MAX_RETRIES = 3;
+    let res = null;
+    let finalError = null;
+    let quotaHit = false;
+
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      if (bulkState.shouldCancel) break;
+
+      while (bulkState.isPaused && !bulkState.shouldCancel) {
+        bulkStatusIndicator.textContent = "Paused";
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      if (bulkState.shouldCancel) break;
+
+      try {
+        res = await invoke("scrape_and_export_single_game", {
+          req: {
+            romPath: rom.path,
+            romFilename: rom.filename,
+            systemId: systemOverride !== null ? systemOverride : rom.system_id,
+            source,
+            outputDir,
+            overwrite: !skipExisting,
+            saveBoxart,
+            saveScreenshot,
+            saveTitle,
+            saveMenu,
+          },
+        });
+
+        // Check if ScreenScraper daily request quota was reached
+        if (res && res.error && (res.error.includes("DAILY_QUOTA_REACHED") || res.error.includes("Quota journalier"))) {
+          quotaHit = true;
+          break;
+        }
+
+        // Check for transient rate limit or network glitch in res.error
+        if (res && !res.success && !res.skipped && res.error && isTransientError(res.error)) {
+          if (attempt < MAX_RETRIES && !bulkState.shouldCancel) {
+            const delaySec = attempt * 5;
+            appendBulkLog(rom.filename, "RETRYING", `Transient error: ${res.error}. Retrying in ${delaySec}s (${attempt}/${MAX_RETRIES})…`, "status-retrying");
+            bulkStatusIndicator.textContent = `Retrying in ${delaySec}s…`;
+            await new Promise((r) => setTimeout(r, delaySec * 1000));
+            continue;
+          }
+        }
+
+        // Succeeded, skipped, or permanent error (not transient)
+        finalError = null;
+        break;
+      } catch (err) {
+        finalError = err;
+        const errStr = err.toString();
+
+        if (errStr.includes("DAILY_QUOTA_REACHED") || errStr.includes("Quota journalier")) {
+          quotaHit = true;
+          break;
+        }
+
+        if (isTransientError(errStr) && attempt < MAX_RETRIES && !bulkState.shouldCancel) {
+          const delaySec = attempt * 5;
+          appendBulkLog(rom.filename, "RETRYING", `Network error: ${errStr}. Retrying in ${delaySec}s (${attempt}/${MAX_RETRIES})…`, "status-retrying");
+          bulkStatusIndicator.textContent = `Retrying in ${delaySec}s…`;
+          await new Promise((r) => setTimeout(r, delaySec * 1000));
+          continue;
+        }
+        break;
+      }
+    }
+
+    if (quotaHit) {
+      appendBulkLog(rom.filename, "QUOTA LIMIT", "Daily request limit reached (resets 00:00 GMT). Scraping paused.", "status-quota");
+      bulkState.isPaused = true;
+      bulkPauseBtn.textContent = "Resume";
+      bulkStatusIndicator.textContent = "Daily Quota Reached — Paused";
+      loadScreenScraperQuota();
+      showModalAlert(
+        "ScreenScraper Daily Limit Reached",
+        "You have reached your 20,000 request daily limit on ScreenScraper. The limit resets at midnight GMT (00:00 GMT). Bulk scraping has been automatically paused. You can keep the app open and click 'Resume' tomorrow to continue right where you left off.",
+        "Got It",
+        () => {}
+      );
+      // Decrement i so that upon resuming, this exact ROM is re-attempted
+      i--;
+      continue;
+    }
+
+    if (res) {
+      if (res.skipped) {
+        bulkState.stats.skipped++;
+        statSkippedCount.textContent = bulkState.stats.skipped.toString();
+        appendBulkLog(rom.filename, "SKIPPED", "Already exists", "status-skipped");
+      } else if (res.success) {
+        bulkState.stats.saved++;
+        statSavedCount.textContent = bulkState.stats.saved.toString();
+        const files = res.savedFiles || res.saved_files || [];
+        const matched = res.matchedName || res.matched_name || "";
+        const typesStr = files.join(", ");
+        appendBulkLog(rom.filename, "SAVED", `${matched} (${typesStr})`, "status-saved");
+      } else {
+        bulkState.stats.error++;
+        statErrorCount.textContent = bulkState.stats.error.toString();
+        appendBulkLog(rom.filename, "NOT FOUND", res.error || "No art", "status-warning");
+      }
+    } else if (finalError) {
+      bulkState.stats.error++;
+      statErrorCount.textContent = bulkState.stats.error.toString();
+      appendBulkLog(rom.filename, "ERROR", finalError.toString(), "status-error");
+    }
+
+    // Pacing delay (350ms) to respect ScreenScraper rate limits
+    if (source === SOURCE_SCREENSCRAPER) {
+      await new Promise((r) => setTimeout(r, 350));
+    }
+  }
+
+  // Finished or cancelled
+  bulkState.isRunning = false;
+  bulkStartBtn.classList.remove("hidden");
+  bulkPauseBtn.classList.add("hidden");
+  bulkCancelBtn.classList.add("hidden");
+  bulkBrowseBtn.disabled = false;
+  bulkRecursive.disabled = false;
+  bulkSystemFilter.disabled = false;
+
+  loadScreenScraperQuota();
+
+  if (bulkState.shouldCancel) {
+    bulkStatusIndicator.textContent = "Cancelled";
+    bulkCurrentItem.textContent = "Bulk scrape was cancelled.";
+  } else {
+    bulkStatusIndicator.textContent = "Done!";
+    bulkCurrentItem.textContent = `Completed: ${bulkState.stats.saved} saved, ${bulkState.stats.skipped} skipped, ${bulkState.stats.error} missed.`;
+    bulkProgressBar.style.width = "100%";
+    bulkProgressPct.textContent = "100%";
+  }
+});
+
+bulkPauseBtn?.addEventListener("click", () => {
+  bulkState.isPaused = !bulkState.isPaused;
+  bulkPauseBtn.textContent = bulkState.isPaused ? "Resume" : "Pause";
+  if (!bulkState.isPaused) {
+    bulkStatusIndicator.textContent = "Processing…";
+  }
+});
+
+bulkCancelBtn?.addEventListener("click", () => {
+  bulkState.shouldCancel = true;
+  bulkStatusIndicator.textContent = "Stopping…";
 });
