@@ -207,6 +207,20 @@ fn hash_rom(path: &str) -> Result<(u32, String, u64), String> {
 
 // ── Public API ─────────────────────────────────────────────────
 
+fn check_ss_errors(body: &str) -> Result<(), String> {
+    if body.contains("Erreur de login") {
+        return Err("ScreenScraper login failed — check credentials in Settings".to_string());
+    }
+    if body.contains("Quota journalier atteint") {
+        return Err("DAILY_QUOTA_REACHED: ScreenScraper daily request quota has been reached (resets at midnight GMT).".to_string());
+    }
+    if body.contains("Maximum de threads") || body.contains("Trop de requêtes") {
+        return Err("RATE_LIMIT: Too many requests — temporary rate limit hit.".to_string());
+    }
+    Ok(())
+}
+
+
 /// Tries to identify a ROM by hash (CRC32 + MD5) via jeuInfos.
 /// Returns `None` if the ROM is not found in the SS database (caller should fall
 /// through to `search_game`). Returns an error only for network/parse failures.
@@ -262,31 +276,21 @@ pub async fn lookup_by_hash(
         .await
         .map_err(|e| scrub(e, ss_user, ss_pass))?;
 
-    // ScreenScraper returns HTTP 200 with a body sentinel instead of HTTP error codes
-    // for "not found" and many error conditions.
-    if body.contains("Erreur de login") {
-        return Err("ScreenScraper login failed — check credentials in Settings".to_string());
-    }
-    if body.contains("Quota journalier atteint") {
-        return Err("DAILY_QUOTA_REACHED: ScreenScraper daily request quota has been reached (resets at midnight GMT).".to_string());
-    }
-    if body.contains("Maximum de threads") || body.contains("Trop de requêtes") {
-        return Err("RATE_LIMIT: Too many requests — temporary rate limit hit.".to_string());
-    }
-    if body.contains("jeuNotTrouve") {
-        dev_log!("[SS] hash lookup: no match ({} bytes)", body.len());
-        return Ok(None);
-    }
-    if body.contains("Erreur") {
-        return Err(scrub(format!("ScreenScraper API error: {}", body.trim()), ss_user, ss_pass));
-    }
+    check_ss_errors(&body)?;
 
-    let parsed: SsInfoResponse = serde_json::from_str(&body)
-        .map_err(|e| scrub(format!("ScreenScraper jeuInfos parse error: {e}"), ss_user, ss_pass))?;
-
-    match parsed.response.jeu {
-        Some(game) => Ok(Some(extract_results(game, vec![]))),
-        None => Ok(None),
+    match serde_json::from_str::<SsInfoResponse>(&body) {
+        Ok(parsed) => match parsed.response.jeu {
+            Some(game) => Ok(Some(extract_results(game, vec![]))),
+            None => Ok(None),
+        },
+        Err(_) => {
+            if body.contains("jeuNotTrouve") || body.contains("Erreur") {
+                dev_log!("[SS] hash lookup: no match ({} bytes)", body.len());
+                Ok(None)
+            } else {
+                Err(scrub(format!("ScreenScraper API error: {}", body.trim()), ss_user, ss_pass))
+            }
+        }
     }
 }
 
@@ -331,28 +335,20 @@ pub async fn fetch_by_game_id(
         .await
         .map_err(|e| scrub(e, ss_user, ss_pass))?;
 
-    if body.contains("Erreur de login") {
-        return Err("ScreenScraper login failed — check credentials in Settings".to_string());
-    }
-    if body.contains("Quota journalier atteint") {
-        return Err("DAILY_QUOTA_REACHED: ScreenScraper daily request quota has been reached (resets at midnight GMT).".to_string());
-    }
-    if body.contains("Maximum de threads") || body.contains("Trop de requêtes") {
-        return Err("RATE_LIMIT: Too many requests — temporary rate limit hit.".to_string());
-    }
-    if body.contains("jeuNotTrouve") {
-        return Ok(SsResults::empty());
-    }
-    if body.contains("Erreur") {
-        return Err(scrub(format!("ScreenScraper API error: {}", body.trim()), ss_user, ss_pass));
-    }
+    check_ss_errors(&body)?;
 
-    let parsed: SsInfoResponse = serde_json::from_str(&body)
-        .map_err(|e| scrub(format!("ScreenScraper jeuInfos parse error: {e}"), ss_user, ss_pass))?;
-
-    match parsed.response.jeu {
-        Some(game) => Ok(extract_results(game, vec![])),
-        None => Ok(SsResults::empty()),
+    match serde_json::from_str::<SsInfoResponse>(&body) {
+        Ok(parsed) => match parsed.response.jeu {
+            Some(game) => Ok(extract_results(game, vec![])),
+            None => Ok(SsResults::empty()),
+        },
+        Err(_) => {
+            if body.contains("jeuNotTrouve") || body.contains("Erreur") {
+                Ok(SsResults::empty())
+            } else {
+                Err(scrub(format!("ScreenScraper API error: {}", body.trim()), ss_user, ss_pass))
+            }
+        }
     }
 }
 
@@ -401,25 +397,18 @@ pub async fn search_game(
         .await
         .map_err(|e| scrub(e, ss_user, ss_pass))?;
 
-    if body.contains("Erreur de login") {
-        return Err("ScreenScraper login failed — check credentials in Settings".to_string());
-    }
-    if body.contains("Quota journalier atteint") {
-        return Err("DAILY_QUOTA_REACHED: ScreenScraper daily request quota has been reached (resets at midnight GMT).".to_string());
-    }
-    if body.contains("Maximum de threads") || body.contains("Trop de requêtes") {
-        return Err("RATE_LIMIT: Too many requests — temporary rate limit hit.".to_string());
-    }
-    if body.contains("jeuNotTrouve") {
-        dev_log!("[SS] search: no match ({} bytes)", body.len());
-        return Ok(SsResults::empty());
-    }
-    if body.contains("Erreur") {
-        return Err(scrub(format!("ScreenScraper API error: {}", body.trim()), ss_user, ss_pass));
-    }
+    check_ss_errors(&body)?;
 
-    let parsed: SsResponse = serde_json::from_str(&body)
-        .map_err(|e| scrub(format!("ScreenScraper parse error: {e}"), ss_user, ss_pass))?;
+    let parsed: SsResponse = match serde_json::from_str(&body) {
+        Ok(p) => p,
+        Err(_) => {
+            if body.contains("jeuNotTrouve") || body.contains("Erreur") {
+                dev_log!("[SS] search: no match ({} bytes)", body.len());
+                return Ok(SsResults::empty());
+            }
+            return Err(scrub(format!("ScreenScraper API error: {}", body.trim()), ss_user, ss_pass));
+        }
+    };
 
     let jeux = parsed.response.jeux;
 
@@ -515,7 +504,7 @@ pub struct SsUserQuota {
     pub max_threads: u32,
 }
 
-fn val_to_u64(val: Option<&serde_json::Value>) -> u64 {
+pub fn val_to_u64(val: Option<&serde_json::Value>) -> u64 {
     match val {
         Some(serde_json::Value::Number(n)) => n.as_u64().unwrap_or(0),
         Some(serde_json::Value::String(s)) => s.trim().parse::<u64>().unwrap_or(0),
@@ -553,15 +542,7 @@ pub async fn get_user_quota(
         .await
         .map_err(|e| scrub(e, ss_user, ss_pass))?;
 
-    if body.contains("Erreur de login") {
-        return Err("ScreenScraper login failed — check credentials in Settings".to_string());
-    }
-    if body.contains("Quota journalier atteint") {
-        return Err("DAILY_QUOTA_REACHED: ScreenScraper daily request quota has been reached (resets at midnight GMT).".to_string());
-    }
-    if body.contains("Erreur") {
-        return Err(scrub(format!("ScreenScraper API error: {}", body.trim()), ss_user, ss_pass));
-    }
+    check_ss_errors(&body)?;
 
     let parsed: SsUserResponse = serde_json::from_str(&body)
         .map_err(|e| scrub(format!("ScreenScraper parse error: {e}"), ss_user, ss_pass))?;

@@ -188,9 +188,15 @@ async fn search_game_ss(
                     #[cfg(debug_assertions)]
                     eprintln!("[SS] hash lookup: no match, falling through to jeuRecherche");
                 }
-                Err(_e) => {
+                Err(e) => {
+                    if e.contains("RATE_LIMIT")
+                        || e.contains("DAILY_QUOTA_REACHED")
+                        || e.contains("login failed")
+                    {
+                        return Err(e);
+                    }
                     #[cfg(debug_assertions)]
-                    eprintln!("[SS] hash lookup error (falling through): {_e}");
+                    eprintln!("[SS] hash lookup error (falling through): {e}");
                 }
             }
         }
@@ -684,117 +690,159 @@ pub fn is_rom_extension(ext: &str) -> bool {
     )
 }
 
-/// Auto-detects ScreenScraper system ID and name based on folder hierarchy and file extension.
+/// Auto-detects ScreenScraper system ID and name based on file extension and folder context.
+/// Unambiguous extensions are checked first, followed by folder names under the scan root.
 pub fn detect_system_from_path(path: &std::path::Path) -> Option<(u32, &'static str)> {
-    let path_str = path.to_string_lossy().to_ascii_lowercase();
+    detect_system_from_path_with_root(path, None)
+}
 
-    // 1. Check folder/path keywords
-    if path_str.contains("atari2600")
-        || path_str.contains("atari 2600")
-        || path_str.contains("\\2600\\")
-        || path_str.contains("/2600/")
-    {
-        return Some((26, "Atari 2600"));
-    }
-    if path_str.contains("atari5200")
-        || path_str.contains("atari 5200")
-        || path_str.contains("\\5200\\")
-        || path_str.contains("/5200/")
-    {
-        return Some((40, "Atari 5200"));
-    }
-    if path_str.contains("atari7800")
-        || path_str.contains("atari 7800")
-        || path_str.contains("\\7800\\")
-        || path_str.contains("/7800/")
-    {
-        return Some((41, "Atari 7800"));
-    }
-    if path_str.contains("nesnintendo")
-        || path_str.contains("nes nintendo")
-        || path_str.contains("\\nes\\")
-        || path_str.contains("/nes/")
-        || path_str.contains("famicom")
-    {
-        return Some((3, "NES"));
-    }
-    if path_str.contains("supernintendo")
-        || path_str.contains("super nintendo")
-        || path_str.contains("\\snes\\")
-        || path_str.contains("/snes/")
-        || path_str.contains("super famicom")
-    {
-        return Some((4, "Super Nintendo"));
-    }
-    if path_str.contains("segagenesis")
-        || path_str.contains("sega genesis")
-        || path_str.contains("megadrive")
-        || path_str.contains("mega drive")
-    {
-        return Some((1, "Sega Genesis"));
-    }
-    if path_str.contains("segamastersystem")
-        || path_str.contains("sega master system")
-        || path_str.contains("mastersystem")
-        || path_str.contains("master system")
-    {
-        return Some((2, "Sega Master System"));
-    }
-    if path_str.contains("gameboyadvance")
-        || path_str.contains("game boy advance")
-        || path_str.contains("\\gba\\")
-        || path_str.contains("/gba/")
-    {
-        return Some((12, "Game Boy Advance"));
-    }
-    if path_str.contains("gameboycolor")
-        || path_str.contains("game boy color")
-        || path_str.contains("\\gbc\\")
-        || path_str.contains("/gbc/")
-    {
-        return Some((10, "Game Boy Color"));
-    }
-    if path_str.contains("gameboy")
-        || path_str.contains("game boy")
-        || path_str.contains("\\gb\\")
-        || path_str.contains("/gb/")
-    {
-        return Some((9, "Game Boy"));
-    }
-    if path_str.contains("gamegear") || path_str.contains("game gear") {
-        return Some((21, "Game Gear"));
-    }
-    if path_str.contains("pcengine")
-        || path_str.contains("pc engine")
-        || path_str.contains("turbografx")
-        || path_str.contains("\\pce\\")
-        || path_str.contains("/pce/")
-    {
-        return Some((31, "PC Engine"));
-    }
-    if path_str.contains("arcade") || path_str.contains("mame") {
-        return Some((75, "MAME (Arcade)"));
-    }
+fn contains_token(text: &str, token: &str) -> bool {
+    text.split(|c: char| !c.is_alphanumeric())
+        .any(|part| part.eq_ignore_ascii_case(token))
+}
 
-    // 2. Check extension fallback
+pub fn detect_system_from_path_with_root(
+    path: &std::path::Path,
+    scan_root: Option<&std::path::Path>,
+) -> Option<(u32, &'static str)> {
+    // 1. Check unambiguous extensions first
     if let Some(ext) = path
         .extension()
         .and_then(|s| s.to_str())
         .map(|s| s.to_ascii_lowercase())
     {
         match ext.as_str() {
-            "a26" => Some((26, "Atari 2600")),
-            "a52" => Some((40, "Atari 5200")),
-            "a78" => Some((41, "Atari 7800")),
-            "nes" => Some((3, "NES")),
-            "sfc" | "smc" | "fig" | "swc" => Some((4, "Super Nintendo")),
-            "sms" => Some((2, "Sega Master System")),
-            "gg" => Some((21, "Game Gear")),
-            "gb" => Some((9, "Game Boy")),
-            "gbc" => Some((10, "Game Boy Color")),
-            "gba" => Some((12, "Game Boy Advance")),
+            "a26" => return Some((26, "Atari 2600")),
+            "a52" => return Some((40, "Atari 5200")),
+            "a78" => return Some((41, "Atari 7800")),
+            "nes" => return Some((3, "NES")),
+            "sfc" | "smc" | "fig" | "swc" => return Some((4, "Super Nintendo")),
+            "sms" => return Some((2, "Sega Master System")),
+            "gg" => return Some((21, "Game Gear")),
+            "gb" => return Some((9, "Game Boy")),
+            "gbc" => return Some((10, "Game Boy Color")),
+            "gba" => return Some((12, "Game Boy Advance")),
+            "pce" | "sgx" => return Some((31, "PC Engine")),
+            "lnx" => return Some((28, "Atari Lynx")),
+            _ => {}
+        }
+    }
+
+    // 2. Check folder context (only check folder components under scan_root, or immediate parent)
+    let folder_context: String = if let Some(root) = scan_root {
+        path.parent()
+            .and_then(|p| p.strip_prefix(root).ok())
+            .map(|p| p.to_string_lossy().to_ascii_lowercase())
+            .unwrap_or_default()
+    } else {
+        path.parent()
+            .and_then(|p| p.file_name())
+            .map(|f| f.to_string_lossy().to_ascii_lowercase())
+            .unwrap_or_default()
+    };
+
+    if !folder_context.is_empty() {
+        // Super Nintendo / Super Famicom MUST be checked before NES / Famicom
+        if folder_context.contains("super nintendo")
+            || folder_context.contains("supernintendo")
+            || folder_context.contains("super famicom")
+            || folder_context.contains("superfamicom")
+            || contains_token(&folder_context, "snes")
+            || contains_token(&folder_context, "sfc")
+        {
+            return Some((4, "Super Nintendo"));
+        }
+        if folder_context.contains("nes nintendo")
+            || folder_context.contains("nesnintendo")
+            || folder_context.contains("famicom")
+            || contains_token(&folder_context, "nes")
+        {
+            return Some((3, "NES"));
+        }
+
+        // GBA / GBC before GB
+        if folder_context.contains("game boy advance")
+            || folder_context.contains("gameboy advance")
+            || folder_context.contains("gameboyadvance")
+            || contains_token(&folder_context, "gba")
+        {
+            return Some((12, "Game Boy Advance"));
+        }
+        if folder_context.contains("game boy color")
+            || folder_context.contains("gameboy color")
+            || folder_context.contains("gameboycolor")
+            || contains_token(&folder_context, "gbc")
+        {
+            return Some((10, "Game Boy Color"));
+        }
+        if folder_context.contains("game boy")
+            || folder_context.contains("gameboy")
+            || contains_token(&folder_context, "gb")
+        {
+            return Some((9, "Game Boy"));
+        }
+
+        if folder_context.contains("game gear")
+            || folder_context.contains("gamegear")
+            || contains_token(&folder_context, "gg")
+        {
+            return Some((21, "Game Gear"));
+        }
+
+        // Atari models
+        if folder_context.contains("7800") {
+            return Some((41, "Atari 7800"));
+        }
+        if folder_context.contains("5200") {
+            return Some((40, "Atari 5200"));
+        }
+        if folder_context.contains("2600") {
+            return Some((26, "Atari 2600"));
+        }
+
+        // Sega consoles: Master System before Genesis
+        if folder_context.contains("master system")
+            || folder_context.contains("mastersystem")
+            || contains_token(&folder_context, "sms")
+        {
+            return Some((2, "Sega Master System"));
+        }
+        if folder_context.contains("genesis")
+            || folder_context.contains("mega drive")
+            || folder_context.contains("megadrive")
+            || contains_token(&folder_context, "smd")
+            || contains_token(&folder_context, "gen")
+        {
+            return Some((1, "Sega Genesis"));
+        }
+
+        if folder_context.contains("pc engine")
+            || folder_context.contains("pcengine")
+            || folder_context.contains("turbografx")
+            || contains_token(&folder_context, "pce")
+            || contains_token(&folder_context, "tg16")
+        {
+            return Some((31, "PC Engine"));
+        }
+
+        if folder_context.contains("arcade") || folder_context.contains("mame") {
+            return Some((75, "MAME (Arcade)"));
+        }
+
+        if folder_context.contains("lynx") {
+            return Some((28, "Atari Lynx"));
+        }
+    }
+
+    // 3. Fallback for extensions that suggest a platform
+    if let Some(ext) = path
+        .extension()
+        .and_then(|s| s.to_str())
+        .map(|s| s.to_ascii_lowercase())
+    {
+        match ext.as_str() {
+            "gen" | "smd" => Some((1, "Sega Genesis")),
             "pce" | "sgx" => Some((31, "PC Engine")),
-            "md" | "gen" | "smd" => Some((1, "Sega Genesis")),
             _ => None,
         }
     } else {
@@ -833,6 +881,7 @@ fn sanitize_rom_stem(rom_name: &str) -> Result<String, String> {
 }
 
 #[derive(serde::Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct DiscoveredRom {
     pub path: String,
     pub rel_path: String,
@@ -847,6 +896,7 @@ pub struct DiscoveredRom {
 }
 
 #[derive(serde::Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct ScanResult {
     pub roms: Vec<DiscoveredRom>,
     pub total_roms: usize,
@@ -868,6 +918,19 @@ pub async fn scan_rom_directory(
     .map_err(|e| e.to_string())?
 }
 
+fn ext_priority(ext: &str) -> u8 {
+    match ext.to_ascii_lowercase().as_str() {
+        "cue" => 10,
+        "chd" => 9,
+        "sfc" | "nes" | "sms" | "gg" | "gba" | "gbc" | "gb" | "pce" | "sgx" | "a26" | "a52" | "a78" | "lnx" => 8,
+        "smc" | "fig" | "swc" | "gen" | "md" | "smd" => 7,
+        "iso" => 6,
+        "zip" | "7z" => 4,
+        "bin" => 2,
+        _ => 1,
+    }
+}
+
 fn scan_rom_directory_sync(
     root_path: &str,
     recursive: bool,
@@ -878,11 +941,20 @@ fn scan_rom_directory_sync(
         return Err(format!("Directory does not exist: {root_path}"));
     }
 
-    let mut roms = Vec::new();
+    if let Some(custom) = custom_output_dir {
+        let custom_path = std::path::Path::new(custom);
+        if !custom_path.is_dir() {
+            return Err(format!("Custom output directory does not exist: {custom}"));
+        }
+    }
+
+    let mut roms: Vec<DiscoveredRom> = Vec::new();
     let mut systems_map: std::collections::HashMap<String, usize> =
         std::collections::HashMap::new();
-    let mut already_complete = 0;
-    let mut needs_art = 0;
+    let mut already_complete: usize = 0;
+    let mut needs_art: usize = 0;
+    let mut stem_map: std::collections::HashMap<(String, String), usize> =
+        std::collections::HashMap::new();
 
     let mut stack = vec![root.to_path_buf()];
     while let Some(current_dir) = stack.pop() {
@@ -892,6 +964,12 @@ fn scan_rom_directory_sync(
         };
 
         for entry in entries.flatten() {
+            // Never follow symlinks/junctions to prevent infinite loops
+            let Ok(file_type) = entry.file_type() else { continue };
+            if file_type.is_symlink() {
+                continue;
+            }
+
             let path = entry.path();
             if path.is_dir() {
                 if recursive {
@@ -908,6 +986,31 @@ fn scan_rom_directory_sync(
                 let Some(file_name) = path.file_name().and_then(|f| f.to_str()) else {
                     continue;
                 };
+
+                // Ignore documentation files like README.md, LICENSE.md
+                let lower_name = file_name.to_ascii_lowercase();
+                if lower_name.starts_with("readme")
+                    || lower_name.starts_with("license")
+                    || lower_name.starts_with("changelog")
+                    || lower_name == "copying"
+                {
+                    continue;
+                }
+
+                // .md is Sega Genesis only when in Genesis context; otherwise skip as markdown doc
+                if ext.eq_ignore_ascii_case("md") {
+                    let in_genesis_folder = path
+                        .parent()
+                        .map(|p| {
+                            let s = p.to_string_lossy().to_ascii_lowercase();
+                            s.contains("genesis") || s.contains("megadrive") || s.contains("mega drive")
+                        })
+                        .unwrap_or(false);
+                    if !in_genesis_folder {
+                        continue;
+                    }
+                }
+
                 let stem = path
                     .file_stem()
                     .and_then(|s| s.to_str())
@@ -920,13 +1023,11 @@ fn scan_rom_directory_sync(
                     .into_owned();
                 let dir_path = path.parent().unwrap_or(root).to_string_lossy().into_owned();
 
-                let detected = detect_system_from_path(&path);
+                let detected = detect_system_from_path_with_root(&path, Some(root));
                 let (system_id, system_name) = match detected {
                     Some((id, name)) => (Some(id), name.to_string()),
                     None => (None, "Unknown System".to_string()),
                 };
-
-                *systems_map.entry(system_name.clone()).or_insert(0) += 1;
 
                 let target_dir = if let Some(custom) = custom_output_dir {
                     let rel_parent = path
@@ -960,24 +1061,54 @@ fn scan_rom_directory_sync(
                 }
 
                 let has_all_art = existing_count == 4;
+
+                let discovered = DiscoveredRom {
+                    path: path.to_string_lossy().into_owned(),
+                    rel_path,
+                    dir_path: dir_path.clone(),
+                    filename: file_name.to_string(),
+                    stem: stem.to_string(),
+                    extension: ext.to_string(),
+                    system_id,
+                    system_name: system_name.clone(),
+                    has_all_art,
+                    existing_art_count: existing_count,
+                };
+
+                // Deduplicate by (dir_path, safe_stem) — e.g. Game.cue vs Game.bin, or .nes vs .zip
+                let dedupe_key = (dir_path, safe_stem.to_ascii_lowercase());
+                if let Some(&existing_idx) = stem_map.get(&dedupe_key) {
+                    let existing_rom = &roms[existing_idx];
+                    if ext_priority(ext) > ext_priority(&existing_rom.extension) {
+                        // Replace lower-priority ROM
+                        if existing_rom.has_all_art {
+                            already_complete = already_complete.saturating_sub(1);
+                        } else {
+                            needs_art = needs_art.saturating_sub(1);
+                        }
+                        if let Some(c) = systems_map.get_mut(&existing_rom.system_name) {
+                            *c = c.saturating_sub(1);
+                        }
+
+                        *systems_map.entry(system_name).or_insert(0) += 1;
+                        if has_all_art {
+                            already_complete += 1;
+                        } else {
+                            needs_art += 1;
+                        }
+                        roms[existing_idx] = discovered;
+                    }
+                    continue;
+                }
+
+                stem_map.insert(dedupe_key, roms.len());
+                *systems_map.entry(system_name).or_insert(0) += 1;
                 if has_all_art {
                     already_complete += 1;
                 } else {
                     needs_art += 1;
                 }
-
-                roms.push(DiscoveredRom {
-                    path: path.to_string_lossy().into_owned(),
-                    rel_path,
-                    dir_path,
-                    filename: file_name.to_string(),
-                    stem: stem.to_string(),
-                    extension: ext.to_string(),
-                    system_id,
-                    system_name,
-                    has_all_art,
-                    existing_art_count: existing_count,
-                });
+                roms.push(discovered);
             }
         }
     }
@@ -1017,6 +1148,60 @@ pub struct BulkScrapeResult {
     pub matched_name: Option<String>,
     pub saved_files: Vec<String>,
     pub error: Option<String>,
+    pub error_kind: Option<String>,
+}
+
+fn classify_scrape_error(err: &str) -> &'static str {
+    let s = err.to_ascii_lowercase();
+    if s.contains("daily_quota_reached") || s.contains("quota journalier") {
+        "DailyQuota"
+    } else if s.contains("rate_limit")
+        || s.contains("too many requests")
+        || s.contains("trop de requêtes")
+        || s.contains("maximum de threads")
+    {
+        "RateLimit"
+    } else if s.contains("login failed") || s.contains("unauthorized") || s.contains("api key") {
+        "Auth"
+    } else if s.contains("timed out")
+        || s.contains("timeout")
+        || s.contains("error sending request")
+        || s.contains("connection reset")
+        || s.contains("connection refused")
+        || s.contains("502")
+        || s.contains("503")
+        || s.contains("504")
+    {
+        "Transient"
+    } else if s.contains("no artwork") || s.contains("not found") {
+        "NotFound"
+    } else {
+        "IO"
+    }
+}
+
+async fn process_and_save_artwork(
+    client: &reqwest::Client,
+    candidate_url: &str,
+    image_type: crate::image_processing::ImageType,
+    crop: Option<crate::image_processing::CropPreset>,
+    dest: &std::path::Path,
+) -> Result<(), String> {
+    let cached_path = download_and_cache_internal(client, candidate_url).await?;
+    let cache_copy = cached_path.clone();
+    let processed_temp = tokio::task::spawn_blocking(move || {
+        crate::image_processing::process_image(&cache_copy, image_type, crop)
+    })
+    .await
+    .map_err(|e| format!("Task panic: {e}"))??;
+
+    let res = tokio::fs::copy(&processed_temp, dest)
+        .await
+        .map(|_| ())
+        .map_err(|e| format!("Failed to copy to {}: {e}", dest.display()));
+
+    let _ = tokio::fs::remove_file(&processed_temp).await;
+    res
 }
 
 #[tauri::command]
@@ -1024,6 +1209,9 @@ pub async fn scrape_and_export_single_game(
     http: tauri::State<'_, AppClient>,
     req: BulkScrapeRequest,
 ) -> Result<BulkScrapeResult, String> {
+    if req.output_dir.trim().is_empty() {
+        return Err("Output directory path is empty".to_string());
+    }
     let client = &http.0;
     let out_dir = std::path::Path::new(&req.output_dir);
     if !out_dir.exists() {
@@ -1057,6 +1245,7 @@ pub async fn scrape_and_export_single_game(
                 matched_name: None,
                 saved_files: vec![],
                 error: None,
+                error_kind: None,
             });
         }
     }
@@ -1078,38 +1267,35 @@ pub async fn scrape_and_export_single_game(
     } {
         Ok(res) => res,
         Err(e) => {
+            let kind = classify_scrape_error(&e);
             return Ok(BulkScrapeResult {
                 success: false,
                 skipped: false,
                 matched_name: None,
                 saved_files: vec![],
                 error: Some(e),
+                error_kind: Some(kind.to_string()),
             });
         }
     };
 
     let mut saved_files = Vec::new();
+    let mut image_errors = Vec::new();
 
     // 2. Process Boxart
     if req.save_boxart && (req.overwrite || !boxart_dest.exists()) {
         if let Some(candidate) = search_res.boxart.first() {
-            if let Ok(cached_path) = download_and_cache_internal(client, &candidate.url).await {
-                let cache_copy = cached_path.clone();
-                if let Ok(processed_temp) = tokio::task::spawn_blocking(move || {
-                    crate::image_processing::process_image(
-                        &cache_copy,
-                        crate::image_processing::ImageType::Boxart,
-                        Some(crate::image_processing::CropPreset::Center),
-                    )
-                })
-                .await
-                .unwrap_or(Err("Task panicked".into()))
-                {
-                    if tokio::fs::copy(&processed_temp, &boxart_dest).await.is_ok() {
-                        let _ = tokio::fs::remove_file(&processed_temp).await;
-                        saved_files.push("boxart".to_string());
-                    }
-                }
+            match process_and_save_artwork(
+                client,
+                &candidate.url,
+                crate::image_processing::ImageType::Boxart,
+                Some(crate::image_processing::CropPreset::Center),
+                &boxart_dest,
+            )
+            .await
+            {
+                Ok(()) => saved_files.push("boxart".to_string()),
+                Err(e) => image_errors.push(format!("boxart: {e}")),
             }
         }
     }
@@ -1117,26 +1303,17 @@ pub async fn scrape_and_export_single_game(
     // 3. Process Screenshot
     if req.save_screenshot && (req.overwrite || !screenshot_dest.exists()) {
         if let Some(candidate) = search_res.screenshot.first() {
-            if let Ok(cached_path) = download_and_cache_internal(client, &candidate.url).await {
-                let cache_copy = cached_path.clone();
-                if let Ok(processed_temp) = tokio::task::spawn_blocking(move || {
-                    crate::image_processing::process_image(
-                        &cache_copy,
-                        crate::image_processing::ImageType::Screenshot,
-                        None,
-                    )
-                })
-                .await
-                .unwrap_or(Err("Task panicked".into()))
-                {
-                    if tokio::fs::copy(&processed_temp, &screenshot_dest)
-                        .await
-                        .is_ok()
-                    {
-                        let _ = tokio::fs::remove_file(&processed_temp).await;
-                        saved_files.push("screenshot".to_string());
-                    }
-                }
+            match process_and_save_artwork(
+                client,
+                &candidate.url,
+                crate::image_processing::ImageType::Screenshot,
+                None,
+                &screenshot_dest,
+            )
+            .await
+            {
+                Ok(()) => saved_files.push("screenshot".to_string()),
+                Err(e) => image_errors.push(format!("screenshot: {e}")),
             }
         }
     }
@@ -1144,23 +1321,17 @@ pub async fn scrape_and_export_single_game(
     // 4. Process Title
     if req.save_title && (req.overwrite || !title_dest.exists()) {
         if let Some(candidate) = search_res.title.first() {
-            if let Ok(cached_path) = download_and_cache_internal(client, &candidate.url).await {
-                let cache_copy = cached_path.clone();
-                if let Ok(processed_temp) = tokio::task::spawn_blocking(move || {
-                    crate::image_processing::process_image(
-                        &cache_copy,
-                        crate::image_processing::ImageType::Title,
-                        None,
-                    )
-                })
-                .await
-                .unwrap_or(Err("Task panicked".into()))
-                {
-                    if tokio::fs::copy(&processed_temp, &title_dest).await.is_ok() {
-                        let _ = tokio::fs::remove_file(&processed_temp).await;
-                        saved_files.push("title".to_string());
-                    }
-                }
+            match process_and_save_artwork(
+                client,
+                &candidate.url,
+                crate::image_processing::ImageType::Title,
+                None,
+                &title_dest,
+            )
+            .await
+            {
+                Ok(()) => saved_files.push("title".to_string()),
+                Err(e) => image_errors.push(format!("title: {e}")),
             }
         }
     }
@@ -1168,35 +1339,36 @@ pub async fn scrape_and_export_single_game(
     // 5. Process Menu
     if req.save_menu && (req.overwrite || !menu_dest.exists()) {
         if let Some(candidate) = search_res.menu.first() {
-            if let Ok(cached_path) = download_and_cache_internal(client, &candidate.url).await {
-                let cache_copy = cached_path.clone();
-                if let Ok(processed_temp) = tokio::task::spawn_blocking(move || {
-                    crate::image_processing::process_image(
-                        &cache_copy,
-                        crate::image_processing::ImageType::Menu,
-                        Some(crate::image_processing::CropPreset::Center),
-                    )
-                })
-                .await
-                .unwrap_or(Err("Task panicked".into()))
-                {
-                    if tokio::fs::copy(&processed_temp, &menu_dest).await.is_ok() {
-                        let _ = tokio::fs::remove_file(&processed_temp).await;
-                        saved_files.push("menu".to_string());
-                    }
-                }
+            match process_and_save_artwork(
+                client,
+                &candidate.url,
+                crate::image_processing::ImageType::Menu,
+                Some(crate::image_processing::CropPreset::Center),
+                &menu_dest,
+            )
+            .await
+            {
+                Ok(()) => saved_files.push("menu".to_string()),
+                Err(e) => image_errors.push(format!("menu: {e}")),
             }
         }
     }
 
     let matched_name = search_res.matched_game.map(|g| g.name);
     if saved_files.is_empty() {
+        let err_msg = if !image_errors.is_empty() {
+            image_errors.join("; ")
+        } else {
+            "No artwork candidates available to download".to_string()
+        };
+        let kind = classify_scrape_error(&err_msg);
         Ok(BulkScrapeResult {
             success: false,
             skipped: false,
             matched_name,
             saved_files: vec![],
-            error: Some("No artwork candidates available to download".to_string()),
+            error: Some(err_msg),
+            error_kind: Some(kind.to_string()),
         })
     } else {
         Ok(BulkScrapeResult {
@@ -1205,6 +1377,7 @@ pub async fn scrape_and_export_single_game(
             matched_name,
             saved_files,
             error: None,
+            error_kind: None,
         })
     }
 }
@@ -1266,16 +1439,68 @@ mod tests {
     }
 
     #[test]
-    fn test_scan_real_games_folder() {
-        if std::path::Path::new("I:\\Games").exists() {
-            let res =
-                scan_rom_directory_sync("I:\\Games", true, None).expect("Scan should succeed");
-            assert!(res.total_roms > 4000);
-            assert!(res.systems_found.contains_key("Atari 2600"));
-            assert!(res.systems_found.contains_key("NES"));
-            assert!(res.systems_found.contains_key("Sega Genesis"));
-            assert!(res.systems_found.contains_key("Game Boy Advance"));
-        }
+    fn test_detect_system_unambiguous_extensions() {
+        assert_eq!(detect_system_from_path(std::path::Path::new("C:/games/Arcade Classics.a26")), Some((26, "Atari 2600")));
+        assert_eq!(detect_system_from_path(std::path::Path::new("C:/games/mame_fighter.nes")), Some((3, "NES")));
+        assert_eq!(detect_system_from_path(std::path::Path::new("C:/games/genesis_hero.sms")), Some((2, "Sega Master System")));
+        assert_eq!(detect_system_from_path(std::path::Path::new("C:/games/game.gba")), Some((12, "Game Boy Advance")));
+        assert_eq!(detect_system_from_path(std::path::Path::new("C:/games/game.pce")), Some((31, "PC Engine")));
+        assert_eq!(detect_system_from_path(std::path::Path::new("C:/games/game.gg")), Some((21, "Game Gear")));
+    }
+
+    #[test]
+    fn test_detect_system_super_famicom_before_famicom() {
+        let sfc_path = std::path::Path::new("C:/roms/Super Famicom/game.bin");
+        assert_eq!(detect_system_from_path(sfc_path), Some((4, "Super Nintendo")));
+
+        let nes_path = std::path::Path::new("C:/roms/Famicom/game.bin");
+        assert_eq!(detect_system_from_path(nes_path), Some((3, "NES")));
+    }
+
+    #[test]
+    fn test_val_to_u64() {
+        let num_val = serde_json::json!(19330);
+        assert_eq!(crate::screenscraper::val_to_u64(Some(&num_val)), 19330);
+
+        let str_val = serde_json::json!("20000");
+        assert_eq!(crate::screenscraper::val_to_u64(Some(&str_val)), 20000);
+
+        assert_eq!(crate::screenscraper::val_to_u64(None), 0);
+    }
+
+    #[test]
+    fn test_scan_rom_directory_temp_fixture() {
+        let temp_dir = std::env::temp_dir().join(format!("agsp_test_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let snes_dir = temp_dir.join("Super Nintendo");
+        let nes_dir = temp_dir.join("NES");
+        let gen_dir = temp_dir.join("Genesis");
+        std::fs::create_dir_all(&snes_dir).unwrap();
+        std::fs::create_dir_all(&nes_dir).unwrap();
+        std::fs::create_dir_all(&gen_dir).unwrap();
+
+        // Add ROMs
+        std::fs::write(snes_dir.join("Mario.sfc"), b"dummy").unwrap();
+        std::fs::write(nes_dir.join("Zelda.nes"), b"dummy").unwrap();
+        
+        // Multi-file ROM deduplication test: Sonic.bin and Sonic.cue in same folder
+        std::fs::write(gen_dir.join("Sonic.bin"), b"dummy").unwrap();
+        std::fs::write(gen_dir.join("Sonic.cue"), b"dummy").unwrap();
+
+        // Non-ROM doc test: README.md should be ignored
+        std::fs::write(temp_dir.join("README.md"), b"# Notes").unwrap();
+
+        let scan = scan_rom_directory_sync(temp_dir.to_str().unwrap(), true, None).expect("Scan should succeed");
+        
+        // Cleanup temp dir
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        // Sonic.bin and Sonic.cue deduplicated to 1 game, README.md ignored
+        assert_eq!(scan.total_roms, 3);
+        assert_eq!(scan.needs_art, 3);
+        assert_eq!(scan.already_complete, 0);
+        assert_eq!(*scan.systems_found.get("Super Nintendo").unwrap_or(&0), 1);
+        assert_eq!(*scan.systems_found.get("NES").unwrap_or(&0), 1);
+        assert_eq!(*scan.systems_found.get("Sega Genesis").unwrap_or(&0), 1);
     }
 
     #[test]

@@ -1559,6 +1559,7 @@ const singleStepNav = document.getElementById("single-step-nav");
 let currentAppMode = "single"; // "single" | "bulk"
 
 function setAppMode(mode) {
+  if (bulkState && bulkState.isRunning) return;
   currentAppMode = mode;
   if (mode === "single") {
     modeSingleBtn.classList.add("active");
@@ -1586,10 +1587,19 @@ const bulkCustomDestRow = document.getElementById("bulk-custom-dest-row");
 const bulkCustomOutputDir = document.getElementById("bulk-custom-output-dir");
 
 function updateDestUI() {
-  bulkCustomDestRow.classList.toggle("hidden", destAlongsideRadio.checked);
+  const isCustom = destCustomRadio.checked;
+  bulkCustomDestRow.classList.toggle("hidden", !isCustom);
+  if (isCustom && !bulkCustomOutputDir.value.trim()) {
+    bulkStartBtn.disabled = true;
+    bulkStartBtn.title = "Select output directory first";
+  } else {
+    bulkStartBtn.title = "";
+    filterScannedRoms();
+  }
 }
 destAlongsideRadio?.addEventListener("change", updateDestUI);
 destCustomRadio?.addEventListener("change", updateDestUI);
+bulkCustomOutputDir?.addEventListener("input", updateDestUI);
 
 // Bulk scan state
 const bulkState = {
@@ -1599,6 +1609,7 @@ const bulkState = {
   isRunning: false,
   isPaused: false,
   shouldCancel: false,
+  maxRequestsPerDay: 0,
   stats: { saved: 0, skipped: 0, error: 0 },
 };
 
@@ -1635,6 +1646,24 @@ const bulkQuotaCard = document.getElementById("bulk-quota-card");
 const bulkQuotaText = document.getElementById("bulk-quota-text");
 const bulkRefreshQuotaBtn = document.getElementById("bulk-refresh-quota-btn");
 
+function setBulkControlsDisabled(disabled) {
+  if (settingsBtn) settingsBtn.disabled = disabled;
+  if (modeSingleBtn) modeSingleBtn.disabled = disabled;
+  if (modeBulkBtn) modeBulkBtn.disabled = disabled;
+  if (bulkBrowseBtn) bulkBrowseBtn.disabled = disabled;
+  if (bulkRecursive) bulkRecursive.disabled = disabled;
+  if (bulkSystemFilter) bulkSystemFilter.disabled = disabled;
+  if (destAlongsideRadio) destAlongsideRadio.disabled = disabled;
+  if (destCustomRadio) destCustomRadio.disabled = disabled;
+  if (bulkCustomOutputDir) bulkCustomOutputDir.disabled = disabled;
+  if (bulkOutputBrowseBtn) bulkOutputBrowseBtn.disabled = disabled;
+  if (bulkSkipExisting) bulkSkipExisting.disabled = disabled;
+  if (bulkArtBoxart) bulkArtBoxart.disabled = disabled;
+  if (bulkArtScreenshot) bulkArtScreenshot.disabled = disabled;
+  if (bulkArtTitle) bulkArtTitle.disabled = disabled;
+  if (bulkArtMenu) bulkArtMenu.disabled = disabled;
+}
+
 async function loadScreenScraperQuota() {
   if (typeof currentAppMode !== "undefined" && currentAppMode !== "bulk") return;
   const source = getSelectedSource();
@@ -1654,6 +1683,7 @@ async function loadScreenScraperQuota() {
     const requestsToday = Number(quota.requestsToday ?? quota.requests_today ?? 0);
     const remaining = Number(quota.remaining ?? Math.max(0, maxRequests - requestsToday));
     const maxThreads = Number(quota.maxThreads ?? quota.max_threads ?? 1);
+    bulkState.maxRequestsPerDay = maxRequests;
 
     if (maxRequests > 0) {
       bulkQuotaText.textContent = `${remaining.toLocaleString()} / ${maxRequests.toLocaleString()} requests remaining (${requestsToday.toLocaleString()} used today, max ${maxThreads} threads)`;
@@ -1718,6 +1748,7 @@ bulkOutputBrowseBtn?.addEventListener("click", async () => {
   });
   if (!selected) return;
   bulkCustomOutputDir.value = typeof selected === "string" ? selected : selected[0];
+  updateDestUI();
   if (bulkState.rootFolder) {
     await triggerBulkScan();
   }
@@ -1759,14 +1790,25 @@ async function triggerBulkScan() {
 
 function renderScanSummary(res) {
   bulkScanSummary.classList.remove("hidden");
-  bulkSummaryCount.textContent = `${res.total_roms.toLocaleString()} ROMs found`;
-  bulkSummaryStatus.textContent = `${res.needs_art.toLocaleString()} needing artwork, ${res.already_complete.toLocaleString()} complete`;
+  const total = res.totalRoms ?? res.total_roms ?? 0;
+  const needsArt = res.needsArt ?? res.needs_art ?? 0;
+  const alreadyComplete = res.alreadyComplete ?? res.already_complete ?? 0;
+  const systemsFound = res.systemsFound ?? res.systems_found ?? {};
 
-  bulkSystemsBadges.innerHTML = "";
-  for (const [sysName, count] of Object.entries(res.systems_found)) {
+  bulkSummaryCount.textContent = `${total.toLocaleString()} ROMs found`;
+  bulkSummaryStatus.textContent = `${needsArt.toLocaleString()} needing artwork, ${alreadyComplete.toLocaleString()} complete`;
+
+  while (bulkSystemsBadges.firstChild) {
+    bulkSystemsBadges.removeChild(bulkSystemsBadges.firstChild);
+  }
+  for (const [sysName, count] of Object.entries(systemsFound)) {
     const pill = document.createElement("span");
     pill.className = "system-pill";
-    pill.innerHTML = `${sysName} <span class="system-pill-count">${count}</span>`;
+    pill.textContent = `${sysName} `;
+    const countSpan = document.createElement("span");
+    countSpan.className = "system-pill-count";
+    countSpan.textContent = count;
+    pill.appendChild(countSpan);
     bulkSystemsBadges.appendChild(pill);
   }
 }
@@ -1776,15 +1818,37 @@ function filterScannedRoms() {
     bulkStartBtn.disabled = true;
     return;
   }
+  const allRoms = bulkState.scannedResult.roms || [];
   const selectedFilter = bulkSystemFilter.value;
-  let roms = bulkState.scannedResult.roms;
-  if (selectedFilter !== "auto") {
-    const filterId = parseInt(selectedFilter, 10);
-    roms = roms.filter((r) => r.system_id === filterId);
+  const isCustomMissing = destCustomRadio.checked && !bulkCustomOutputDir.value.trim();
+
+  let roms = [];
+  if (selectedFilter === "auto") {
+    roms = allRoms.filter((r) => {
+      const sysId = r.systemId ?? r.system_id;
+      return sysId !== null && sysId !== undefined;
+    });
+    const skippedUnknown = allRoms.length - roms.length;
+    bulkState.filteredRoms = roms;
+    bulkStartBtn.disabled = roms.length === 0 || isCustomMissing;
+    if (skippedUnknown > 0) {
+      bulkStartBtn.textContent = `Start Bulk Scrape (${roms.length.toLocaleString()} games, ${skippedUnknown} unknown skipped)`;
+    } else {
+      bulkStartBtn.textContent = `Start Bulk Scrape (${roms.length.toLocaleString()} games)`;
+    }
+  } else {
+    const selectedOption = bulkSystemFilter.options[bulkSystemFilter.selectedIndex];
+    const systemName = selectedOption ? selectedOption.text : selectedFilter;
+    bulkState.filteredRoms = allRoms;
+    bulkStartBtn.disabled = allRoms.length === 0 || isCustomMissing;
+    bulkStartBtn.textContent = `Start Bulk Scrape (${allRoms.length.toLocaleString()} games - Override: ${systemName})`;
   }
-  bulkState.filteredRoms = roms;
-  bulkStartBtn.disabled = roms.length === 0;
-  bulkStartBtn.textContent = `Start Bulk Scrape (${roms.length.toLocaleString()} games)`;
+
+  if (isCustomMissing) {
+    bulkStartBtn.title = "Select output directory first";
+  } else {
+    bulkStartBtn.title = "";
+  }
 }
 
 // Logging helper
@@ -1807,7 +1871,7 @@ function appendBulkLog(title, badgeText, detail, badgeClass) {
   if (detail) {
     const detailSpan = document.createElement("span");
     detailSpan.className = "log-detail";
-    detailSpan.textContent = ` — ${detail}`;
+    detailSpan.textContent = ` \u2014 ${detail}`;
     bodySpan.appendChild(detailSpan);
   }
 
@@ -1842,10 +1906,39 @@ bulkStartBtn?.addEventListener("click", async () => {
     return;
   }
 
+  if (destCustomRadio.checked && !bulkCustomOutputDir.value.trim()) {
+    showModalAlert(
+      "Output Directory Required",
+      "Please select an artwork output directory before starting the bulk scrape.",
+      "Close",
+      () => {}
+    );
+    return;
+  }
+
   const roms = bulkState.filteredRoms;
   if (!roms || roms.length === 0) return;
 
-  // Reset state
+  if (!bulkSkipExisting.checked) {
+    showModalAlert(
+      "Overwrite Existing Artwork?",
+      "You have unchecked 'Skip existing artwork'. Any existing artwork files in the destination directories will be overwritten.\\n\\nAre you sure you want to proceed?",
+      "Overwrite & Start",
+      () => {
+        runBulkScrape();
+      }
+    );
+    return;
+  }
+
+  await runBulkScrape();
+});
+
+async function runBulkScrape() {
+  const source = getSelectedSource();
+  const roms = bulkState.filteredRoms;
+  if (!roms || roms.length === 0) return;
+
   bulkState.isRunning = true;
   bulkState.isPaused = false;
   bulkState.shouldCancel = false;
@@ -1854,16 +1947,16 @@ bulkStartBtn?.addEventListener("click", async () => {
   statSavedCount.textContent = "0";
   statSkippedCount.textContent = "0";
   statErrorCount.textContent = "0";
-  bulkLogEntries.innerHTML = "";
+  while (bulkLogEntries.firstChild) {
+    bulkLogEntries.removeChild(bulkLogEntries.firstChild);
+  }
 
   bulkProgressSection.classList.remove("hidden");
   bulkStartBtn.classList.add("hidden");
   bulkPauseBtn.classList.remove("hidden");
   bulkPauseBtn.textContent = "Pause";
   bulkCancelBtn.classList.remove("hidden");
-  bulkBrowseBtn.disabled = true;
-  bulkRecursive.disabled = true;
-  bulkSystemFilter.disabled = true;
+  setBulkControlsDisabled(true);
 
   const useAlongside = destAlongsideRadio.checked;
   const customOut = bulkCustomOutputDir.value.trim();
@@ -1874,6 +1967,8 @@ bulkStartBtn?.addEventListener("click", async () => {
   const saveMenu = bulkArtMenu.checked;
   const systemOverrideVal = bulkSystemFilter.value;
   const systemOverride = systemOverrideVal !== "auto" ? parseInt(systemOverrideVal, 10) : null;
+
+  let consecutiveErrors = 0;
 
   for (let i = 0; i < roms.length; i++) {
     if (bulkState.shouldCancel) break;
@@ -1891,16 +1986,19 @@ bulkStartBtn?.addEventListener("click", async () => {
     bulkCurrentItem.textContent = `[${i + 1}/${roms.length}] ${rom.filename}`;
     bulkStatusIndicator.textContent = `Processing…`;
 
-    // Determine output directory
     let outputDir = "";
+    const romDirPath = rom.dirPath || rom.dir_path || "";
+    const romRelPath = rom.relPath || rom.rel_path || "";
     if (useAlongside) {
-      outputDir = rom.dir_path;
+      outputDir = romDirPath;
     } else {
-      const relParent = rom.rel_path.includes("\\")
-        ? rom.rel_path.substring(0, rom.rel_path.lastIndexOf("\\"))
-        : (rom.rel_path.includes("/") ? rom.rel_path.substring(0, rom.rel_path.lastIndexOf("/")) : "");
+      const relParent = romRelPath.includes("\\")
+        ? romRelPath.substring(0, romRelPath.lastIndexOf("\\"))
+        : (romRelPath.includes("/") ? romRelPath.substring(0, romRelPath.lastIndexOf("/")) : "");
       outputDir = relParent ? `${customOut}\\${relParent}` : customOut;
     }
+
+    const effectiveSystemId = systemOverride !== null ? systemOverride : (rom.systemId ?? rom.system_id);
 
     const MAX_RETRIES = 3;
     let res = null;
@@ -1921,7 +2019,7 @@ bulkStartBtn?.addEventListener("click", async () => {
           req: {
             romPath: rom.path,
             romFilename: rom.filename,
-            systemId: systemOverride !== null ? systemOverride : rom.system_id,
+            systemId: effectiveSystemId,
             source,
             outputDir,
             overwrite: !skipExisting,
@@ -1932,24 +2030,31 @@ bulkStartBtn?.addEventListener("click", async () => {
           },
         });
 
+        const errorKind = res ? (res.errorKind || res.error_kind) : null;
+        const errText = res && res.error ? res.error : "";
+
         // Check if ScreenScraper daily request quota was reached
-        if (res && res.error && (res.error.includes("DAILY_QUOTA_REACHED") || res.error.includes("Quota journalier"))) {
+        if (errorKind === "DailyQuota" || errText.includes("DAILY_QUOTA_REACHED") || errText.includes("Quota journalier")) {
           quotaHit = true;
           break;
         }
 
+        // Check if ScreenScraper auth failed
+        if (errorKind === "Auth" || errText.toLowerCase().includes("login failed") || errText.toLowerCase().includes("identifiants")) {
+          break;
+        }
+
         // Check for transient rate limit or network glitch in res.error
-        if (res && !res.success && !res.skipped && res.error && isTransientError(res.error)) {
+        if (res && !res.success && !res.skipped && (errorKind === "RateLimit" || errorKind === "Transient" || isTransientError(errText))) {
           if (attempt < MAX_RETRIES && !bulkState.shouldCancel) {
             const delaySec = attempt * 5;
-            appendBulkLog(rom.filename, "RETRYING", `Transient error: ${res.error}. Retrying in ${delaySec}s (${attempt}/${MAX_RETRIES})…`, "status-retrying");
+            appendBulkLog(rom.filename, "RETRYING", `Transient error: ${errText || errorKind}. Retrying in ${delaySec}s (${attempt}/${MAX_RETRIES})…`, "status-retrying");
             bulkStatusIndicator.textContent = `Retrying in ${delaySec}s…`;
             await new Promise((r) => setTimeout(r, delaySec * 1000));
             continue;
           }
         }
 
-        // Succeeded, skipped, or permanent error (not transient)
         finalError = null;
         break;
       } catch (err) {
@@ -1958,6 +2063,10 @@ bulkStartBtn?.addEventListener("click", async () => {
 
         if (errStr.includes("DAILY_QUOTA_REACHED") || errStr.includes("Quota journalier")) {
           quotaHit = true;
+          break;
+        }
+
+        if (errStr.toLowerCase().includes("login failed") || errStr.toLowerCase().includes("identifiants")) {
           break;
         }
 
@@ -1978,23 +2087,41 @@ bulkStartBtn?.addEventListener("click", async () => {
       bulkPauseBtn.textContent = "Resume";
       bulkStatusIndicator.textContent = "Daily Quota Reached — Paused";
       loadScreenScraperQuota();
+      const maxReq = bulkState.maxRequestsPerDay || 20000;
       showModalAlert(
         "ScreenScraper Daily Limit Reached",
-        "You have reached your 20,000 request daily limit on ScreenScraper. The limit resets at midnight GMT (00:00 GMT). Bulk scraping has been automatically paused. You can keep the app open and click 'Resume' tomorrow to continue right where you left off.",
+        `You have reached your ${maxReq.toLocaleString()} request daily limit on ScreenScraper. The limit resets at midnight GMT (00:00 GMT). Bulk scraping has been automatically paused. You can keep the app open and click 'Resume' tomorrow to continue right where you left off.`,
         "Got It",
         () => {}
       );
-      // Decrement i so that upon resuming, this exact ROM is re-attempted
       i--;
       continue;
     }
 
+    const isAuth = (res && ((res.errorKind || res.error_kind) === "Auth" || (res.error && (res.error.toLowerCase().includes("login failed") || res.error.toLowerCase().includes("identifiants"))))) ||
+                   (finalError && (finalError.toString().toLowerCase().includes("login failed") || finalError.toString().toLowerCase().includes("identifiants")));
+
+    if (isAuth) {
+      appendBulkLog(rom.filename, "AUTH FAILED", "ScreenScraper login failed. Bulk scrape stopped. Check credentials in Settings.", "status-error");
+      bulkStatusIndicator.textContent = "Authentication Failed — Stopped";
+      bulkState.shouldCancel = true;
+      showModalAlert(
+        "Authentication Failed",
+        "ScreenScraper authentication failed. Please verify your username and password in Settings.",
+        "Open Settings",
+        () => openSettings()
+      );
+      break;
+    }
+
     if (res) {
       if (res.skipped) {
+        consecutiveErrors = 0;
         bulkState.stats.skipped++;
         statSkippedCount.textContent = bulkState.stats.skipped.toString();
         appendBulkLog(rom.filename, "SKIPPED", "Already exists", "status-skipped");
       } else if (res.success) {
+        consecutiveErrors = 0;
         bulkState.stats.saved++;
         statSavedCount.textContent = bulkState.stats.saved.toString();
         const files = res.savedFiles || res.saved_files || [];
@@ -2002,18 +2129,42 @@ bulkStartBtn?.addEventListener("click", async () => {
         const typesStr = files.join(", ");
         appendBulkLog(rom.filename, "SAVED", `${matched} (${typesStr})`, "status-saved");
       } else {
-        bulkState.stats.error++;
-        statErrorCount.textContent = bulkState.stats.error.toString();
-        appendBulkLog(rom.filename, "NOT FOUND", res.error || "No art", "status-warning");
+        const errorKind = res.errorKind || res.error_kind;
+        if (errorKind === "NotFound" || (res.error && res.error.toLowerCase().includes("not found"))) {
+          consecutiveErrors = 0;
+          bulkState.stats.error++;
+          statErrorCount.textContent = bulkState.stats.error.toString();
+          appendBulkLog(rom.filename, "NOT FOUND", res.error || "No art", "status-warning");
+        } else {
+          consecutiveErrors++;
+          bulkState.stats.error++;
+          statErrorCount.textContent = bulkState.stats.error.toString();
+          appendBulkLog(rom.filename, "ERROR", res.error || "Scrape failed", "status-error");
+        }
       }
     } else if (finalError) {
+      consecutiveErrors++;
       bulkState.stats.error++;
       statErrorCount.textContent = bulkState.stats.error.toString();
       appendBulkLog(rom.filename, "ERROR", finalError.toString(), "status-error");
     }
 
-    // Pacing delay (350ms) to respect ScreenScraper rate limits
-    if (source === SOURCE_SCREENSCRAPER) {
+    if (consecutiveErrors >= 5) {
+      appendBulkLog(rom.filename, "PAUSED", "5 consecutive errors encountered. Bulk scrape paused.", "status-retrying");
+      bulkState.isPaused = true;
+      bulkPauseBtn.textContent = "Resume";
+      bulkStatusIndicator.textContent = "Paused (5 Consecutive Errors)";
+      showModalAlert(
+        "Bulk Scrape Paused",
+        "Encountered 5 consecutive errors from the scraper service. Scraping has been paused. Please check your network connection or settings, then click Resume.",
+        "Got It",
+        () => {}
+      );
+      consecutiveErrors = 0;
+    }
+
+    // Pacing delay (350ms) to respect ScreenScraper rate limits when network request was made
+    if (source === SOURCE_SCREENSCRAPER && (!res || !res.skipped)) {
       await new Promise((r) => setTimeout(r, 350));
     }
   }
@@ -2023,22 +2174,22 @@ bulkStartBtn?.addEventListener("click", async () => {
   bulkStartBtn.classList.remove("hidden");
   bulkPauseBtn.classList.add("hidden");
   bulkCancelBtn.classList.add("hidden");
-  bulkBrowseBtn.disabled = false;
-  bulkRecursive.disabled = false;
-  bulkSystemFilter.disabled = false;
+  setBulkControlsDisabled(false);
 
   loadScreenScraperQuota();
 
   if (bulkState.shouldCancel) {
-    bulkStatusIndicator.textContent = "Cancelled";
-    bulkCurrentItem.textContent = "Bulk scrape was cancelled.";
+    if (!bulkStatusIndicator.textContent.includes("Failed")) {
+      bulkStatusIndicator.textContent = "Cancelled";
+      bulkCurrentItem.textContent = "Bulk scrape was cancelled.";
+    }
   } else {
     bulkStatusIndicator.textContent = "Done!";
     bulkCurrentItem.textContent = `Completed: ${bulkState.stats.saved} saved, ${bulkState.stats.skipped} skipped, ${bulkState.stats.error} missed.`;
     bulkProgressBar.style.width = "100%";
     bulkProgressPct.textContent = "100%";
   }
-});
+}
 
 bulkPauseBtn?.addEventListener("click", () => {
   bulkState.isPaused = !bulkState.isPaused;
@@ -2050,5 +2201,8 @@ bulkPauseBtn?.addEventListener("click", () => {
 
 bulkCancelBtn?.addEventListener("click", () => {
   bulkState.shouldCancel = true;
+  if (bulkState.isPaused) {
+    bulkState.isPaused = false;
+  }
   bulkStatusIndicator.textContent = "Stopping…";
 });
