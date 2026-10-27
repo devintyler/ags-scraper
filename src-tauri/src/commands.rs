@@ -304,6 +304,13 @@ fn validate_image_url(url: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Text for a failed image download. ScreenScraper media URLs carry the dev and
+/// user credentials in their query string, and reqwest puts the full URL in its
+/// error text, so the URL must be dropped before the message reaches the UI.
+fn download_error_text(e: reqwest::Error) -> String {
+    e.without_url().to_string()
+}
+
 pub async fn download_and_cache_internal(
     client: &reqwest::Client,
     url: &str,
@@ -318,12 +325,12 @@ pub async fn download_and_cache_internal(
         .get(url)
         .send()
         .await
-        .map_err(|e| e.to_string())?
+        .map_err(download_error_text)?
         .error_for_status()
-        .map_err(|e| e.to_string())?
+        .map_err(download_error_text)?
         .bytes()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(download_error_text)?;
     // A concurrent request may have written the file while we were downloading;
     // overwriting with identical bytes is safe, but skip the write if possible.
     if !path.exists() {
@@ -1610,18 +1617,24 @@ mod tests {
             classify_scrape_error("TRANSIENT: ScreenScraper server error (HTTP 500)"),
             "Transient"
         );
-        // The exact messages produced by classify_ss_status must land in the
-        // categories the UI acts on.
-        assert_eq!(
-            classify_scrape_error("DAILY_QUOTA_REACHED: ScreenScraper daily limit for unrecognized ROMs has been reached"),
-            "DailyQuota"
-        );
-        assert_eq!(
-            classify_scrape_error(
-                "ScreenScraper login failed — check credentials in Settings (HTTP 403)"
-            ),
-            "Auth"
-        );
+        // Feed the real messages from classify_ss_status through the classifier so
+        // the two can't drift apart. This is what decides stop / pause / retry.
+        let kind_for = |status: u16| match crate::screenscraper::classify_ss_status(status) {
+            crate::screenscraper::SsStatus::Fail(msg) => classify_scrape_error(&msg),
+            other => panic!("expected a failure for {status}, got {other:?}"),
+        };
+        assert_eq!(kind_for(429), "RateLimit");
+        assert_eq!(kind_for(430), "DailyQuota");
+        assert_eq!(kind_for(431), "DailyQuota");
+        assert_eq!(kind_for(403), "Auth");
+        // 401 is "closed to non-members / server busy" in the docs: retry, don't abort.
+        assert_eq!(kind_for(401), "Transient");
+        for status in [500, 502, 503, 504] {
+            assert_eq!(kind_for(status), "Transient", "status {status}");
+        }
+        for status in [400, 423, 426] {
+            assert_eq!(kind_for(status), "IO", "status {status}");
+        }
         assert_eq!(
             classify_scrape_error("No artwork candidates available to download"),
             "NotFound"
@@ -1631,6 +1644,19 @@ mod tests {
             classify_scrape_error("boxart: Failed to copy to C:\\roms\\Game 502.png: disk error"),
             "IO"
         );
+    }
+
+    #[tokio::test]
+    async fn test_download_error_text_drops_the_url() {
+        // Connection to a closed local port fails immediately, no network needed.
+        let err = reqwest::Client::new()
+            .get("http://127.0.0.1:1/media?devpassword=SECRET-VALUE")
+            .send()
+            .await
+            .expect_err("nothing listens on port 1");
+        // Prove the test is meaningful: the raw error text does contain the URL.
+        assert!(err.to_string().contains("SECRET-VALUE"));
+        assert!(!download_error_text(err).contains("SECRET-VALUE"));
     }
 
     #[test]

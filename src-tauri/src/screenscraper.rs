@@ -217,7 +217,7 @@ const MAX_HASH_BYTES: u64 = 256 * 1024 * 1024;
 
 /// What an HTTP status from ScreenScraper means for the caller.
 #[derive(Debug, PartialEq)]
-enum SsStatus {
+pub(crate) enum SsStatus {
     Ok,
     NotFound,
     Fail(String),
@@ -228,7 +228,7 @@ enum SsStatus {
 /// language the server answers in (the live API replies in French).
 /// The error prefixes (`RATE_LIMIT:`, `DAILY_QUOTA_REACHED:`, `TRANSIENT:` and the
 /// "login failed" wording) are what the command layer and the UI key on.
-fn classify_ss_status(status: u16) -> SsStatus {
+pub(crate) fn classify_ss_status(status: u16) -> SsStatus {
     match status {
         200..=299 => SsStatus::Ok,
         404 => SsStatus::NotFound,
@@ -243,8 +243,15 @@ fn classify_ss_status(status: u16) -> SsStatus {
             "DAILY_QUOTA_REACHED: ScreenScraper daily limit for unrecognized ROMs has been reached (resets at midnight GMT)."
                 .to_string(),
         ),
-        401 | 403 => SsStatus::Fail(format!(
-            "ScreenScraper login failed — check credentials in Settings (HTTP {status})"
+        // 403 is the app's developer login being rejected (not fixable in Settings).
+        403 => SsStatus::Fail(format!(
+            "ScreenScraper login failed — the app's developer credentials were rejected (HTTP {status})"
+        )),
+        // 401 means "API closed to non-members / server saturated" per the docs, but a
+        // wrong user login may also land here. Retry, and let the consecutive-error
+        // pause catch a persistent problem instead of aborting a long run.
+        401 => SsStatus::Fail(format!(
+            "TRANSIENT: ScreenScraper refused the request (HTTP {status}) — the login may be wrong or the server busy"
         )),
         423 | 426 => SsStatus::Fail(format!(
             "ScreenScraper API unavailable (HTTP {status}) — it is closed or this app version is blocked"
@@ -255,11 +262,14 @@ fn classify_ss_status(status: u16) -> SsStatus {
 }
 
 /// Builds the error for a 2xx body that did not parse as the expected JSON.
-/// Only the word "login" is looked for (same in French and English); anything
-/// else is reported as a plain parse error.
+/// Only the word "login" is looked for (same in French and English), and only in
+/// a short plain-text body, so an HTML maintenance page with a "Login" link is not
+/// mistaken for bad credentials. Anything else is reported as a plain parse error.
 fn explain_unparsable_body(body: &str, detail: String) -> String {
-    let looks_like_json = body.trim_start().starts_with('{');
-    if !looks_like_json && body.to_ascii_lowercase().contains("login") {
+    let trimmed = body.trim();
+    let short_plain_text = trimmed.len() <= 300 && !trimmed.contains('<');
+    if short_plain_text && !trimmed.starts_with('{') && trimmed.to_ascii_lowercase().contains("login")
+    {
         return "ScreenScraper login failed — check credentials in Settings".to_string();
     }
     detail
@@ -629,8 +639,9 @@ mod tests {
         assert!(fail(429).starts_with("RATE_LIMIT:"));
         assert!(fail(430).starts_with("DAILY_QUOTA_REACHED:"));
         assert!(fail(431).starts_with("DAILY_QUOTA_REACHED:"));
-        assert!(fail(401).contains("login failed"));
+        assert!(fail(401).starts_with("TRANSIENT:"));
         assert!(fail(403).contains("login failed"));
+        assert!(fail(403).contains("developer"));
         for status in [500, 502, 503, 504] {
             assert!(fail(status).starts_with("TRANSIENT:"), "status {status}");
         }
@@ -652,6 +663,14 @@ mod tests {
         assert!(
             explain_unparsable_body("Erreur de login : vérifiez", "x".to_string())
                 .contains("login failed")
+        );
+        // An HTML page (maintenance, CDN) with a "Login" link is not a credentials error.
+        assert_eq!(
+            explain_unparsable_body(
+                "<html><body><a href=\"/login\">Login</a> Maintenance</body></html>",
+                "html".to_string()
+            ),
+            "html"
         );
         // A JSON body that merely mentions login is just a parse failure.
         assert_eq!(

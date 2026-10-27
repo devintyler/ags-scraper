@@ -2084,7 +2084,7 @@ async function runBulkScrape() {
     }
 
     if (quotaHit) {
-      appendBulkLog(rom.filename, "QUOTA LIMIT", "Daily request limit reached (resets 00:00 GMT). Scraping paused.", "status-quota");
+      appendBulkLog(rom.filename, "QUOTA LIMIT", "ScreenScraper daily limit reached (resets 00:00 GMT). Scraping paused.", "status-quota");
       bulkState.isPaused = true;
       bulkPauseBtn.textContent = "Resume";
       bulkStatusIndicator.textContent = "Daily Quota Reached — Paused";
@@ -2109,7 +2109,9 @@ async function runBulkScrape() {
       bulkState.shouldCancel = true;
       showModalAlert(
         "Authentication Failed",
-        `${sourceName} authentication failed. Please verify ${credName} in Settings.`,
+        source === SOURCE_SCREENSCRAPER
+          ? `ScreenScraper authentication failed. Please verify ${credName} in Settings. If they are correct, ScreenScraper may be rejecting this app's developer login; try again later.`
+          : `${sourceName} authentication failed. Please verify ${credName} in Settings.`,
         "Open Settings",
         () => openSettings()
       );
