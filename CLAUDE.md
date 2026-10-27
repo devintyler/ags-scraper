@@ -20,6 +20,8 @@ cargo tauri build
 # Run Rust tests only (from src-tauri/)
 cd src-tauri
 cargo test
+# The build embeds ScreenScraper dev credentials via env!(), so set dummies if you
+# don't have the real ones: SCREENSCRAPER_DEV_ID=x SCREENSCRAPER_DEV_PASSWORD=x cargo test
 
 # Check Rust without building
 cargo check
@@ -35,7 +37,7 @@ cargo check
 |---|---|
 | `main.rs` | Tauri app entry point, command registration |
 | `config.rs` | Load/save `%APPDATA%\agsp-scraper\config.toml`; DPAPI encrypt/decrypt credentials |
-| `commands.rs` | All `#[tauri::command]` definitions exposed to the frontend |
+| `commands.rs` | All `#[tauri::command]` definitions exposed to the frontend, including bulk mode (`scan_rom_directory`, `scrape_and_export_single_game`, `auto_detect_rom_system`, `get_ss_user_quota`) and system auto-detection |
 | `screenscraper.rs` | ScreenScraper.fr API client (`jeuRecherche.php`, system ID 75 for MAME) |
 | `steamgriddb.rs` | SteamGridDB API client (grids + logos; never screenshots) |
 | `cache.rs` | Image cache at `%APPDATA%\agsp-scraper\cache\`; SHA-256 URL hash as filename |
@@ -43,7 +45,7 @@ cargo check
 
 ### Frontend (`ui/`)
 
-Single-page app with four views navigated in sequence:
+Single-page app with two modes, toggled at the top of the Main view. **Single ROM** is the original four-step flow below. **Bulk ROMs** (see "Bulk Mode") scrapes a whole folder with no picker. Single ROM mode has four views navigated in sequence:
 
 1. **Settings** — ScreenScraper credentials + SteamGridDB API key (saved encrypted via DPAPI)
 2. **Main** — ROM file picker, output directory, search term, system ID, source selector (ScreenScraper / SteamGridDB / Both)
@@ -95,8 +97,18 @@ api_key_enc = ""    # DPAPI blob, base64
 - **Cache key**: SHA-256 hash of the image URL, used as the cache filename with original extension.
 - **Temp files**: Written to `%APPDATA%\agsp-scraper\temp\{hash}_{type}_{preset}.{ext}`. Cleaned on app startup and on "Scrape Another ROM".
 - **Frontend asset loading**: Use `convertFileSrc()` from `@tauri-apps/api` to convert local cache/temp paths to `asset://` URLs for the WebView.
-- **Overwrite check**: Before exporting, check if any of the four output files already exist and warn the user. Do not create the output directory if it doesn't exist.
+- **Overwrite check**: Before exporting, check if any of the four output files already exist and warn the user. Never create the output directory in single-ROM export; it must already exist. This exists so a typo'd or stale path can't silently create folders the user didn't want.
 - **SteamGridDB**: Grids (`dimensions=600x900,342x482`, portrait format) populate both boxart and menu (both output at 236×322); logos populate title. Never used for screenshots. Run in parallel with ScreenScraper via `tokio::join!`.
+
+## Bulk Mode
+
+- Scans a folder (optionally recursive), detects each ROM's system, then scrapes sequentially with the first candidate for each art type (Center crop for Boxart/Menu). Progress, pause/resume/cancel and an activity log are in the UI.
+- **Output**: either alongside each ROM, or a user-chosen folder that must already exist. Under a custom folder only, the ROM's relative subfolders are mirrored and created as needed. Nothing else is ever created.
+- **System detection** (`detect_system_from_path_with_root`): unambiguous file extensions first, then whole-word folder names *under the scan root only* (parent folders above the root and the filename are ignored). Super Nintendo/Famicom is checked before NES. `.md` is only treated as a ROM in a Genesis folder.
+- **Unknown systems** are skipped by default. The "Unknown ROMs: treat as" dropdown applies a chosen system to unknown ROMs only; detected ROMs always keep their own.
+- **Safeguards**: stops on auth failure, pauses after 5 consecutive errors or on the daily quota, retries transient errors with backoff, and paces requests (350 ms ScreenScraper, 250 ms SteamGridDB) only when a request was made. Unchecking "Skip existing artwork" asks for confirmation.
+- **Hashing**: hash lookups run in `spawn_blocking` and are skipped for files over 256 MB (falls back to the text search).
+- The scanner skips symlinks/junctions and de-duplicates entries that share a folder and filename stem (e.g. `.cue` + `.bin`).
 
 ## Development Phases
 

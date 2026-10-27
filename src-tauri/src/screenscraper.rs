@@ -174,8 +174,9 @@ fn extract_results(game: SsGame, candidates: Vec<SsGameCandidate>) -> SsResults 
 /// Computes CRC32 and MD5 hashes of a file in streaming 64 KB chunks, along with
 /// its size in bytes. Streaming avoids loading the entire ROM into RAM — important
 /// for large images (GBA, PC Engine CD, ISO formats).
+/// Returns `Ok(None)` without reading the file if it is larger than `max_bytes`.
 /// Synchronous blocking — only call from a blocking context.
-fn hash_rom(path: &str) -> Result<(u32, String, u64), String> {
+fn hash_rom(path: &str, max_bytes: u64) -> Result<Option<(u32, String, u64)>, String> {
     use md5::{Digest, Md5};
     use std::io::Read;
 
@@ -184,6 +185,9 @@ fn hash_rom(path: &str) -> Result<(u32, String, u64), String> {
         .metadata()
         .map_err(|e| format!("Failed to stat ROM: {e}"))?
         .len();
+    if size > max_bytes {
+        return Ok(None);
+    }
 
     let mut crc_hasher = crc32fast::Hasher::new();
     let mut md5_hasher = Md5::new();
@@ -202,8 +206,12 @@ fn hash_rom(path: &str) -> Result<(u32, String, u64), String> {
     let crc = crc_hasher.finalize();
     let md5_bytes = md5_hasher.finalize();
     let md5_hex: String = md5_bytes.iter().map(|b| format!("{b:02x}")).collect();
-    Ok((crc, md5_hex, size))
+    Ok(Some((crc, md5_hex, size)))
 }
+
+/// Files above this size are not hashed (large disc images, CHDs). The caller falls
+/// back to the text search, same as for any hash miss.
+const MAX_HASH_BYTES: u64 = 256 * 1024 * 1024;
 
 // ── Public API ─────────────────────────────────────────────────
 
@@ -232,7 +240,15 @@ pub async fn lookup_by_hash(
     ss_user: &str,
     ss_pass: &str,
 ) -> Result<Option<SsResults>, String> {
-    let (crc, md5, size) = hash_rom(rom_path)?;
+    // Hashing reads the whole file, so keep it off the async runtime threads.
+    let hash_path = rom_path.to_string();
+    let hashed = tokio::task::spawn_blocking(move || hash_rom(&hash_path, MAX_HASH_BYTES))
+        .await
+        .map_err(|e| format!("Hash task failed: {e}"))??;
+    let Some((crc, md5, size)) = hashed else {
+        dev_log!("[SS] lookup_by_hash: {rom_filename:?} exceeds hash size limit, skipping");
+        return Ok(None);
+    };
     let crc_hex = format!("{:08x}", crc);
     let size_str = size.to_string();
     let sys_str = system_id.to_string();
@@ -564,3 +580,44 @@ pub async fn get_user_quota(
     })
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_file(name: &str, bytes: &[u8]) -> std::path::PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "agsp_hash_{}_{}",
+            std::process::id(),
+            name
+        ));
+        std::fs::write(&path, bytes).unwrap();
+        path
+    }
+
+    #[test]
+    fn test_hash_rom_known_values() {
+        let path = temp_file("abc.bin", b"abc");
+        let result = hash_rom(path.to_str().unwrap(), 1024);
+        let _ = std::fs::remove_file(&path);
+
+        let (crc, md5, size) = result.unwrap().expect("small file should be hashed");
+        assert_eq!(crc, 0x352441c2);
+        assert_eq!(md5, "900150983cd24fb0d6963f7d28e17f72");
+        assert_eq!(size, 3);
+    }
+
+    #[test]
+    fn test_hash_rom_skips_files_over_limit() {
+        let path = temp_file("big.bin", b"abc");
+        let result = hash_rom(path.to_str().unwrap(), 2);
+        let _ = std::fs::remove_file(&path);
+
+        assert!(result.unwrap().is_none());
+    }
+
+    #[test]
+    fn test_hash_rom_missing_file_is_error() {
+        assert!(hash_rom("Z:/definitely/not/here.bin", 1024).is_err());
+    }
+}
