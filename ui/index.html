@@ -175,7 +175,13 @@
 
     <!-- Step Flow -->
     <div id="flow">
-      <nav class="step-nav">
+      <!-- Mode Toggle Bar -->
+      <div id="mode-toggle-container" class="mode-toggle-container">
+        <button type="button" id="mode-single-btn" class="mode-toggle-btn active">Single ROM</button>
+        <button type="button" id="mode-bulk-btn" class="mode-toggle-btn">Bulk Folder</button>
+      </div>
+
+      <nav id="single-step-nav" class="step-nav">
         <div class="step active" data-step="0">
           <span class="step-num">1</span>
           <span class="step-label">Scrape</span>
@@ -193,113 +199,276 @@
       </nav>
 
       <section id="step-0" class="step-content active">
-        <div class="field-group file-picker-group">
-          <label for="rom-path"
-            >ROM File
-            <span class="label-muted"
-              >(hashed locally for exact matching — never uploaded)</span
-            ></label
-          >
-          <div class="file-picker-row">
+        <!-- Single Mode View -->
+        <div id="single-mode-view">
+          <div class="field-group file-picker-group">
+            <label for="rom-path"
+              >ROM File
+              <span class="label-muted"
+                >(hashed locally for exact matching — never uploaded)</span
+              ></label
+            >
+            <div class="file-picker-row">
+              <input
+                type="text"
+                id="rom-path"
+                placeholder="Select a ROM file…"
+                readonly
+              />
+              <button type="button" id="rom-browse-btn" class="btn-outline">
+                Select
+              </button>
+            </div>
+          </div>
+          <div class="field-group file-picker-group">
+            <label for="output-dir">Output Directory</label>
+            <div class="file-picker-row">
+              <input
+                type="text"
+                id="output-dir"
+                placeholder="Select output folder…"
+                readonly
+              />
+              <button type="button" id="output-browse-btn" class="btn-outline">
+                Browse
+              </button>
+            </div>
+          </div>
+          <div class="field-group">
+            <label>Source</label>
+            <div class="source-toggle">
+              <label class="radio-label">
+                <input
+                  type="radio"
+                  name="source"
+                  id="src-ss"
+                  value="ScreenScraper"
+                  checked
+                />
+                ScreenScraper
+              </label>
+              <label class="radio-label">
+                <input
+                  type="radio"
+                  name="source"
+                  id="src-sgdb"
+                  value="SteamGridDB"
+                />
+                SteamGridDB (no screenshots)
+              </label>
+            </div>
+            <div id="ss-cred-warning" class="inline-warning" hidden>
+              ScreenScraper credentials not set.
+              <a href="#" id="ss-warning-link">Go to Settings</a>
+            </div>
+            <div id="sgdb-cred-warning" class="inline-warning" hidden>
+              SteamGridDB API key not set.
+              <a href="#" id="sgdb-warning-link">Go to Settings</a>
+            </div>
+          </div>
+          <div id="search-term-row" class="field-group">
+            <label for="search-term"
+              >Search Term
+              <span class="label-muted"
+                >(game title — edit if ROM shortname doesn't match)</span
+              ></label
+            >
             <input
               type="text"
-              id="rom-path"
-              placeholder="Select a ROM file…"
-              readonly
+              id="search-term"
+              placeholder="Auto-filled from ROM filename"
             />
-            <button type="button" id="rom-browse-btn" class="btn-outline">
-              Select
-            </button>
           </div>
-        </div>
-        <div class="field-group file-picker-group">
-          <label for="output-dir">Output Directory</label>
-          <div class="file-picker-row">
-            <input
-              type="text"
-              id="output-dir"
-              placeholder="Select output folder…"
-              readonly
-            />
-            <button type="button" id="output-browse-btn" class="btn-outline">
-              Browse
-            </button>
+          <div id="system-row" class="field-group">
+            <label for="system-select">System</label>
+            <select id="system-select">
+              <option value="75">MAME (Arcade)</option>
+              <option value="31">PC Engine / TurboGrafx-16</option>
+              <option value="3">NES</option>
+              <option value="4">Super Nintendo</option>
+              <option value="9">Game Boy</option>
+              <option value="10">Game Boy Color</option>
+              <option value="12">Game Boy Advance</option>
+              <option value="1">Sega Mega Drive / Genesis</option>
+              <option value="2">Sega Master System</option>
+              <option value="21">Sega Game Gear</option>
+              <option value="26">Atari 2600</option>
+              <option value="40">Atari 5200</option>
+              <option value="41">Atari 7800</option>
+            </select>
           </div>
+          <div class="scrape-actions">
+            <button type="button" id="scrape-btn" disabled>Scrape</button>
+            <span id="scrape-status"></span>
+            <a
+              href="#"
+              id="no-intro-link"
+              class="naming-help-link"
+              title="ROM filenames should follow No-Intro naming conventions for best results. For MAME, use the short ROM name (e.g. mspacman)."
+              >Naming help?</a
+            >
+          </div>
+          <div id="scrape-result" class="scrape-result hidden"></div>
         </div>
-        <div class="field-group">
-          <label>Source</label>
-          <div class="source-toggle">
-            <label class="radio-label">
+
+        <!-- Bulk Mode View -->
+        <div id="bulk-mode-view" class="hidden">
+          <div id="bulk-cred-warning" class="inline-warning" hidden>
+            ScreenScraper credentials not configured. Bulk scraping requires an active ScreenScraper account.
+            <a href="#" id="bulk-warning-link">Go to Settings</a>
+          </div>
+
+          <div class="field-group file-picker-group">
+            <label for="bulk-folder-path"
+              >Games Directory
+              <span class="label-muted">(folder containing your ROM files)</span></label
+            >
+            <div class="file-picker-row">
               <input
-                type="radio"
-                name="source"
-                id="src-ss"
-                value="ScreenScraper"
-                checked
+                type="text"
+                id="bulk-folder-path"
+                placeholder="Select games folder (e.g. I:\Games or I:\Games\NESNintendo)…"
+                readonly
               />
-              ScreenScraper
+              <button type="button" id="bulk-browse-btn" class="btn-outline">
+                Browse
+              </button>
+            </div>
+          </div>
+
+          <div class="bulk-options-grid">
+            <label class="checkbox-label">
+              <input type="checkbox" id="bulk-recursive" checked />
+              <span>Scan subfolders recursively</span>
             </label>
-            <label class="radio-label">
+            <label class="checkbox-label">
+              <input type="checkbox" id="bulk-skip-existing" checked />
+              <span>Skip games that already have artwork</span>
+            </label>
+          </div>
+
+          <div class="field-group">
+            <label>Artwork Destination</label>
+            <div class="dest-toggle-group">
+              <label class="radio-label">
+                <input
+                  type="radio"
+                  name="bulk-dest-type"
+                  id="dest-alongside"
+                  value="alongside"
+                  checked
+                />
+                Save alongside ROMs (Recommended for Stock AGSP carousel)
+              </label>
+              <label class="radio-label">
+                <input
+                  type="radio"
+                  name="bulk-dest-type"
+                  id="dest-custom"
+                  value="custom"
+                />
+                Save to separate output folder
+              </label>
+            </div>
+            <div id="bulk-custom-dest-row" class="file-picker-row hidden" style="margin-top: 8px;">
               <input
-                type="radio"
-                name="source"
-                id="src-sgdb"
-                value="SteamGridDB"
+                type="text"
+                id="bulk-custom-output-dir"
+                placeholder="Select separate output folder…"
+                readonly
               />
-              SteamGridDB (no screenshots)
-            </label>
+              <button type="button" id="bulk-output-browse-btn" class="btn-outline">
+                Browse
+              </button>
+            </div>
           </div>
-          <div id="ss-cred-warning" class="inline-warning" hidden>
-            ScreenScraper credentials not set.
-            <a href="#" id="ss-warning-link">Go to Settings</a>
+
+          <div class="field-group">
+            <label>Art Types to Scrape</label>
+            <div class="art-types-grid">
+              <label class="checkbox-label">
+                <input type="checkbox" id="bulk-art-boxart" checked />
+                <span>Boxart (236×322 PNG)</span>
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" id="bulk-art-screenshot" checked />
+                <span>Screenshot (max 362×278 JPG)</span>
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" id="bulk-art-title" checked />
+                <span>Title Logo (960×186 PNG)</span>
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" id="bulk-art-menu" checked />
+                <span>Menu Art (236×322 PNG)</span>
+              </label>
+            </div>
           </div>
-          <div id="sgdb-cred-warning" class="inline-warning" hidden>
-            SteamGridDB API key not set.
-            <a href="#" id="sgdb-warning-link">Go to Settings</a>
+
+          <div class="field-group">
+            <label for="bulk-system-filter">System Filter / Override</label>
+            <select id="bulk-system-filter">
+              <option value="auto">Auto-detect from folder &amp; extension (Recommended)</option>
+              <option value="75">MAME (Arcade)</option>
+              <option value="31">PC Engine / TurboGrafx-16</option>
+              <option value="3">NES</option>
+              <option value="4">Super Nintendo</option>
+              <option value="9">Game Boy</option>
+              <option value="10">Game Boy Color</option>
+              <option value="12">Game Boy Advance</option>
+              <option value="1">Sega Mega Drive / Genesis</option>
+              <option value="2">Sega Master System</option>
+              <option value="21">Sega Game Gear</option>
+              <option value="26">Atari 2600</option>
+              <option value="40">Atari 5200</option>
+              <option value="41">Atari 7800</option>
+            </select>
+          </div>
+
+          <div id="bulk-scan-summary" class="bulk-scan-card hidden">
+            <div class="scan-summary-header">
+              <span id="bulk-summary-count" class="scan-summary-title">0 ROMs found</span>
+              <span id="bulk-summary-status" class="scan-summary-sub"></span>
+            </div>
+            <div id="bulk-systems-badges" class="bulk-badges-row"></div>
+          </div>
+
+          <div id="bulk-quota-card" class="bulk-quota-card hidden">
+            <div class="quota-info">
+              <span class="quota-icon">⚡</span>
+              <span class="quota-label">ScreenScraper Quota:</span>
+              <span id="bulk-quota-text" class="quota-val">Loading…</span>
+            </div>
+            <button type="button" id="bulk-refresh-quota-btn" class="btn-outline btn-xs" title="Refresh ScreenScraper Quota">Refresh</button>
+          </div>
+
+          <div class="bulk-actions-row">
+            <button type="button" id="bulk-start-btn" disabled>Start Bulk Scrape</button>
+            <button type="button" id="bulk-pause-btn" class="btn-outline hidden">Pause</button>
+            <button type="button" id="bulk-cancel-btn" class="restart-btn hidden">Cancel</button>
+            <span id="bulk-status-indicator"></span>
+          </div>
+
+          <div id="bulk-progress-section" class="bulk-progress-panel hidden">
+            <div class="progress-bar-container">
+              <div id="bulk-progress-bar" class="progress-bar-fill" style="width: 0%"></div>
+            </div>
+            <div class="progress-info-row">
+              <span id="bulk-current-item" class="progress-current-label">Ready</span>
+              <span id="bulk-progress-pct" class="progress-pct-label">0%</span>
+            </div>
+            <div class="bulk-stats-row">
+              <div class="bulk-stat-badge stat-success">Saved: <span id="stat-saved-count">0</span></div>
+              <div class="bulk-stat-badge stat-skip">Skipped: <span id="stat-skipped-count">0</span></div>
+              <div class="bulk-stat-badge stat-error">Not Found / Error: <span id="stat-error-count">0</span></div>
+            </div>
+
+            <div class="bulk-log-container">
+              <div class="bulk-log-header">Activity Log</div>
+              <div id="bulk-log-entries" class="bulk-log-list"></div>
+            </div>
           </div>
         </div>
-        <div id="search-term-row" class="field-group">
-          <label for="search-term"
-            >Search Term
-            <span class="label-muted"
-              >(game title — edit if ROM shortname doesn't match)</span
-            ></label
-          >
-          <input
-            type="text"
-            id="search-term"
-            placeholder="Auto-filled from ROM filename"
-          />
-        </div>
-        <div id="system-row" class="field-group">
-          <label for="system-select">System</label>
-          <select id="system-select">
-            <option value="75">MAME (Arcade)</option>
-            <option value="31">PC Engine / TurboGrafx-16</option>
-            <option value="3">NES</option>
-            <option value="4">Super Nintendo</option>
-            <option value="9">Game Boy</option>
-            <option value="10">Game Boy Color</option>
-            <option value="12">Game Boy Advance</option>
-            <option value="1">Sega Mega Drive / Genesis</option>
-            <option value="2">Sega Master System</option>
-            <option value="26">Atari 2600</option>
-            <option value="40">Atari 5200</option>
-            <option value="41">Atari 7800</option>
-          </select>
-        </div>
-        <div class="scrape-actions">
-          <button type="button" id="scrape-btn" disabled>Scrape</button>
-          <span id="scrape-status"></span>
-          <a
-            href="#"
-            id="no-intro-link"
-            class="naming-help-link"
-            title="ROM filenames should follow No-Intro naming conventions for best results. For MAME, use the short ROM name (e.g. mspacman)."
-            >Naming help?</a
-          >
-        </div>
-        <div id="scrape-result" class="scrape-result hidden"></div>
       </section>
 
       <section id="step-1" class="step-content picker-content">
@@ -443,6 +612,34 @@
           <span id="export-status"></span>
         </div>
       </section>
+    </div>
+
+    <!-- Modal Dialog for alerts / credential requirements -->
+    <div id="modal-overlay" class="modal-overlay hidden">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3 id="modal-title">ScreenScraper Credentials Required</h3>
+          <button
+            type="button"
+            id="modal-close-x"
+            class="settings-close-x"
+            aria-label="Close dialog"
+          >
+            &#x2715;
+          </button>
+        </div>
+        <div class="modal-body">
+          <p id="modal-message"></p>
+        </div>
+        <div class="modal-actions">
+          <button type="button" id="modal-cancel-btn" class="btn-outline">
+            Cancel
+          </button>
+          <button type="button" id="modal-confirm-btn">
+            Open Settings
+          </button>
+        </div>
+      </div>
     </div>
 
     <script src="app.js"></script>

@@ -13,9 +13,10 @@ mod screenscraper;
 mod steamgriddb;
 
 use commands::{
-    cleanup_temp_dir, clear_cache, clear_credentials, download_and_cache, export_images,
-    fetch_sgdb_images, fetch_ss_images, get_cache_size, load_config_cmd, process_image,
-    save_config_cmd, search_game,
+    auto_detect_rom_system, cleanup_temp_dir, clear_cache, clear_credentials, download_and_cache,
+    export_images, fetch_sgdb_images, fetch_ss_images, get_cache_size, get_ss_user_quota,
+    load_config_cmd, process_image, save_config_cmd, scan_rom_directory,
+    scrape_and_export_single_game, search_game,
 };
 
 /// Shared HTTP client held in Tauri state so all commands reuse the connection pool.
@@ -46,6 +47,10 @@ pub fn run() {
             process_image,
             cleanup_temp_dir,
             export_images,
+            auto_detect_rom_system,
+            scan_rom_directory,
+            scrape_and_export_single_game,
+            get_ss_user_quota,
         ])
         .build(tauri::generate_context!())
         .expect(

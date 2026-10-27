@@ -14,6 +14,7 @@ const DEV_ID: &str = env!("SCREENSCRAPER_DEV_ID");
 const DEV_PASS: &str = env!("SCREENSCRAPER_DEV_PASSWORD");
 const SEARCH_URL: &str = "https://api.screenscraper.fr/api2/jeuRecherche.php";
 const INFO_URL: &str = "https://api.screenscraper.fr/api2/jeuInfos.php";
+const USER_INFO_URL: &str = "https://api.screenscraper.fr/api2/ssuserInfos.php";
 const SOFT_NAME: &str = "AGSScraper";
 
 /// Replaces any credential values that appear in an error string with `***`.
@@ -206,6 +207,20 @@ fn hash_rom(path: &str) -> Result<(u32, String, u64), String> {
 
 // ── Public API ─────────────────────────────────────────────────
 
+fn check_ss_errors(body: &str) -> Result<(), String> {
+    if body.contains("Erreur de login") {
+        return Err("ScreenScraper login failed — check credentials in Settings".to_string());
+    }
+    if body.contains("Quota journalier atteint") {
+        return Err("DAILY_QUOTA_REACHED: ScreenScraper daily request quota has been reached (resets at midnight GMT).".to_string());
+    }
+    if body.contains("Maximum de threads") || body.contains("Trop de requêtes") {
+        return Err("RATE_LIMIT: Too many requests — temporary rate limit hit.".to_string());
+    }
+    Ok(())
+}
+
+
 /// Tries to identify a ROM by hash (CRC32 + MD5) via jeuInfos.
 /// Returns `None` if the ROM is not found in the SS database (caller should fall
 /// through to `search_game`). Returns an error only for network/parse failures.
@@ -252,25 +267,30 @@ pub async fn lookup_by_hash(
         return Err("ScreenScraper login failed — check credentials in Settings".to_string());
     }
 
+    if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        return Err("RATE_LIMIT: Too many requests — rate limit hit.".to_string());
+    }
+
     let body = resp
         .text()
         .await
         .map_err(|e| scrub(e, ss_user, ss_pass))?;
 
-    // ScreenScraper returns HTTP 200 with a body sentinel instead of HTTP error codes
-    // for "not found" and many error conditions. String matching is fragile but is the
-    // only reliable detection method given the undocumented API.
-    if body.contains("jeuNotTrouve") || body.contains("Erreur") {
-        dev_log!("[SS] hash lookup: no match ({} bytes)", body.len());
-        return Ok(None);
-    }
+    check_ss_errors(&body)?;
 
-    let parsed: SsInfoResponse = serde_json::from_str(&body)
-        .map_err(|e| scrub(format!("ScreenScraper jeuInfos parse error: {e}"), ss_user, ss_pass))?;
-
-    match parsed.response.jeu {
-        Some(game) => Ok(Some(extract_results(game, vec![]))),
-        None => Ok(None),
+    match serde_json::from_str::<SsInfoResponse>(&body) {
+        Ok(parsed) => match parsed.response.jeu {
+            Some(game) => Ok(Some(extract_results(game, vec![]))),
+            None => Ok(None),
+        },
+        Err(_) => {
+            if body.contains("jeuNotTrouve") || body.contains("Erreur") {
+                dev_log!("[SS] hash lookup: no match ({} bytes)", body.len());
+                Ok(None)
+            } else {
+                Err(scrub(format!("ScreenScraper API error: {}", body.trim()), ss_user, ss_pass))
+            }
+        }
     }
 }
 
@@ -306,21 +326,29 @@ pub async fn fetch_by_game_id(
         return Err("ScreenScraper login failed — check credentials in Settings".to_string());
     }
 
+    if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        return Err("RATE_LIMIT: Too many requests — rate limit hit.".to_string());
+    }
+
     let body = resp
         .text()
         .await
         .map_err(|e| scrub(e, ss_user, ss_pass))?;
 
-    if body.contains("jeuNotTrouve") || body.contains("Erreur") {
-        return Ok(SsResults::empty());
-    }
+    check_ss_errors(&body)?;
 
-    let parsed: SsInfoResponse = serde_json::from_str(&body)
-        .map_err(|e| scrub(format!("ScreenScraper jeuInfos parse error: {e}"), ss_user, ss_pass))?;
-
-    match parsed.response.jeu {
-        Some(game) => Ok(extract_results(game, vec![])),
-        None => Ok(SsResults::empty()),
+    match serde_json::from_str::<SsInfoResponse>(&body) {
+        Ok(parsed) => match parsed.response.jeu {
+            Some(game) => Ok(extract_results(game, vec![])),
+            None => Ok(SsResults::empty()),
+        },
+        Err(_) => {
+            if body.contains("jeuNotTrouve") || body.contains("Erreur") {
+                Ok(SsResults::empty())
+            } else {
+                Err(scrub(format!("ScreenScraper API error: {}", body.trim()), ss_user, ss_pass))
+            }
+        }
     }
 }
 
@@ -360,18 +388,27 @@ pub async fn search_game(
         return Err("ScreenScraper login failed — check credentials in Settings".to_string());
     }
 
+    if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        return Err("RATE_LIMIT: Too many requests — rate limit hit.".to_string());
+    }
+
     let body = resp
         .text()
         .await
         .map_err(|e| scrub(e, ss_user, ss_pass))?;
 
-    if body.contains("jeuNotTrouve") || body.contains("Erreur") {
-        dev_log!("[SS] search: no match ({} bytes)", body.len());
-        return Ok(SsResults::empty());
-    }
+    check_ss_errors(&body)?;
 
-    let parsed: SsResponse = serde_json::from_str(&body)
-        .map_err(|e| scrub(format!("ScreenScraper parse error: {e}"), ss_user, ss_pass))?;
+    let parsed: SsResponse = match serde_json::from_str(&body) {
+        Ok(p) => p,
+        Err(_) => {
+            if body.contains("jeuNotTrouve") || body.contains("Erreur") {
+                dev_log!("[SS] search: no match ({} bytes)", body.len());
+                return Ok(SsResults::empty());
+            }
+            return Err(scrub(format!("ScreenScraper API error: {}", body.trim()), ss_user, ss_pass));
+        }
+    };
 
     let jeux = parsed.response.jeux;
 
@@ -433,5 +470,97 @@ pub async fn search_game(
     let mut jeux = jeux;
     let game = jeux.remove(best_idx);
     Ok(extract_results(game, candidates))
+}
+
+// ── ScreenScraper User Quota ───────────────────────────────────
+
+#[derive(Deserialize)]
+struct SsUserResponse {
+    response: SsUserResponseInner,
+}
+
+#[derive(Deserialize)]
+struct SsUserResponseInner {
+    #[serde(default)]
+    ssuser: Option<SsUserObj>,
+}
+
+#[derive(Deserialize)]
+struct SsUserObj {
+    #[serde(default)]
+    requeststoday: Option<serde_json::Value>,
+    #[serde(default)]
+    maxrequestsperday: Option<serde_json::Value>,
+    #[serde(default)]
+    maxthreads: Option<serde_json::Value>,
+}
+
+#[derive(serde::Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct SsUserQuota {
+    pub requests_today: u64,
+    pub max_requests_per_day: u64,
+    pub remaining: u64,
+    pub max_threads: u32,
+}
+
+pub fn val_to_u64(val: Option<&serde_json::Value>) -> u64 {
+    match val {
+        Some(serde_json::Value::Number(n)) => n.as_u64().unwrap_or(0),
+        Some(serde_json::Value::String(s)) => s.trim().parse::<u64>().unwrap_or(0),
+        _ => 0,
+    }
+}
+
+pub async fn get_user_quota(
+    client: &Client,
+    ss_user: &str,
+    ss_pass: &str,
+) -> Result<SsUserQuota, String> {
+    let params: Vec<(&str, &str)> = vec![
+        ("devid",       DEV_ID),
+        ("devpassword", DEV_PASS),
+        ("softname",    SOFT_NAME),
+        ("output",      "json"),
+        ("ssid",        ss_user),
+        ("sspassword",  ss_pass),
+    ];
+
+    let resp = client
+        .get(USER_INFO_URL)
+        .query(&params)
+        .send()
+        .await
+        .map_err(|e| scrub(e, ss_user, ss_pass))?;
+
+    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+        return Err("ScreenScraper login failed — check credentials in Settings".to_string());
+    }
+
+    let body = resp
+        .text()
+        .await
+        .map_err(|e| scrub(e, ss_user, ss_pass))?;
+
+    check_ss_errors(&body)?;
+
+    let parsed: SsUserResponse = serde_json::from_str(&body)
+        .map_err(|e| scrub(format!("ScreenScraper parse error: {e}"), ss_user, ss_pass))?;
+
+    let Some(user) = parsed.response.ssuser else {
+        return Err("No user profile returned from ScreenScraper".to_string());
+    };
+
+    let requests_today = val_to_u64(user.requeststoday.as_ref());
+    let max_requests = val_to_u64(user.maxrequestsperday.as_ref());
+    let max_threads = val_to_u64(user.maxthreads.as_ref()) as u32;
+    let remaining = max_requests.saturating_sub(requests_today);
+
+    Ok(SsUserQuota {
+        requests_today,
+        max_requests_per_day: max_requests,
+        remaining,
+        max_threads,
+    })
 }
 

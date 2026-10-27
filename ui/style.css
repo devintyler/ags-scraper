@@ -192,17 +192,20 @@ body {
   display: block;
 }
 
-button.btn-outline {
+button.btn-outline,
+button[type="button"].btn-outline {
   background: none;
   border: 1px solid var(--color-text);
   color: var(--color-text);
 }
 
-button.btn-outline:hover:not(:disabled) {
+button.btn-outline:hover:not(:disabled),
+button[type="button"].btn-outline:hover:not(:disabled) {
   background: rgba(224, 224, 224, 0.08);
 }
 
-button.btn-sm {
+button.btn-sm,
+button[type="button"].btn-sm {
   font-size: var(--font-size-sm);
   font-weight: 400;
   padding: 5px 12px;
@@ -1244,3 +1247,478 @@ body.scanlines-disabled::before { display: none; }
 .toggle-switch input:checked + .toggle-track::after {
   transform: translateX(16px);
 }
+
+/* ── Mode Toggle Bar ─────────────────────────────────────────── */
+.mode-toggle-container {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin: 16px auto 10px;
+  max-width: 600px;
+}
+
+.mode-toggle-container.hidden {
+  display: none !important;
+}
+
+.mode-toggle-btn {
+  flex: 1;
+  max-width: 200px;
+  padding: 8px 16px;
+  font-family: 'Orbitron', sans-serif;
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.mode-toggle-btn:hover {
+  border-color: var(--color-accent);
+  color: var(--color-text);
+}
+
+.mode-toggle-btn.active {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+  box-shadow: 0 0 10px rgba(var(--color-accent-rgb), 0.4);
+}
+
+/* ── Bulk Mode Styles ────────────────────────────────────────── */
+.bulk-options-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+  accent-color: var(--color-accent);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.dest-toggle-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.art-types-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 12px;
+}
+
+.bulk-scan-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--atari-sky);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 20px;
+}
+
+.scan-summary-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 10px;
+}
+
+.scan-summary-title {
+  font-family: 'Orbitron', sans-serif;
+  font-size: var(--font-size-base);
+  font-weight: 700;
+  color: var(--atari-sky);
+}
+
+.scan-summary-sub {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.bulk-badges-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.system-pill {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--color-border);
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: var(--font-size-xs);
+  color: var(--color-text);
+}
+
+.system-pill-count {
+  margin-left: 5px;
+  background: var(--color-accent);
+  color: #fff;
+  border-radius: 8px;
+  padding: 1px 5px;
+}
+
+/* ── Bulk Quota Card ─────────────────────────────────────────── */
+.bulk-quota-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(44, 105, 86, 0.12);
+  border: 1px solid rgba(44, 105, 86, 0.35);
+  border-left: 3px solid var(--atari-green);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  margin-top: 14px;
+  margin-bottom: 20px;
+  font-size: var(--font-size-xs);
+  color: var(--color-text);
+  gap: 12px;
+}
+
+.bulk-quota-card.hidden {
+  display: none !important;
+}
+
+.quota-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.quota-icon {
+  font-size: 13px;
+  color: var(--atari-yellow);
+  flex-shrink: 0;
+}
+
+.quota-label {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.quota-val {
+  font-family: 'Orbitron', monospace, sans-serif;
+  color: #7ee0b8;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+#bulk-refresh-quota-btn {
+  background: none;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 4px 12px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+#bulk-refresh-quota-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--color-accent);
+  color: #fff;
+}
+
+.bulk-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.bulk-progress-panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-top: 16px;
+}
+
+.progress-bar-container {
+  height: 12px;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  margin-bottom: 10px;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(
+    to right,
+    var(--atari-orange),
+    var(--atari-yellow)
+  );
+  transition: width 0.2s ease;
+  box-shadow: 0 0 8px rgba(var(--color-accent-rgb), 0.5);
+}
+
+.progress-info-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--font-size-sm);
+  margin-bottom: 12px;
+}
+
+.progress-current-label {
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 80%;
+}
+
+.progress-pct-label {
+  font-family: 'Orbitron', sans-serif;
+  font-weight: 700;
+  color: var(--atari-yellow);
+}
+
+.bulk-stats-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.bulk-stat-badge {
+  flex: 1;
+  text-align: center;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+
+.bulk-stat-badge span {
+  font-family: 'Orbitron', sans-serif;
+  font-size: var(--font-size-base);
+  font-weight: 700;
+  display: block;
+  margin-top: 2px;
+}
+
+.stat-success {
+  background: rgba(44, 105, 86, 0.2);
+  border-color: var(--atari-green);
+  color: #7ee0b8;
+}
+
+.stat-skip {
+  background: rgba(69, 159, 237, 0.15);
+  border-color: var(--atari-sky);
+  color: var(--atari-sky);
+}
+
+.stat-error {
+  background: rgba(255, 71, 57, 0.15);
+  border-color: var(--atari-red);
+  color: var(--atari-red);
+}
+
+.bulk-log-container {
+  border-top: 1px solid var(--color-border);
+  padding-top: 12px;
+}
+
+.bulk-log-header {
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted);
+  margin-bottom: 8px;
+}
+
+.bulk-log-list {
+  max-height: 240px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 11px;
+  background: #040608;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.log-entry {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  line-height: 1.45;
+  padding: 2px 4px;
+  border-radius: 2px;
+}
+
+.log-entry:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.log-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  flex-shrink: 0;
+  width: 72px;
+  text-align: center;
+  margin-top: 1px;
+}
+
+.log-badge.status-saved {
+  background: var(--atari-green);
+  color: #fff;
+}
+
+.log-badge.status-skipped {
+  background: #2a3b4c;
+  color: var(--atari-sky);
+}
+
+.log-badge.status-warning {
+  background: #5c4a16;
+  color: var(--atari-yellow);
+}
+
+.log-badge.status-error {
+  background: var(--atari-red);
+  color: #fff;
+}
+
+.log-badge.status-retrying {
+  background: #7a5012;
+  color: var(--atari-yellow);
+}
+
+.log-badge.status-quota {
+  background: #6b1d1d;
+  color: #ff9999;
+}
+
+.log-body {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.log-title {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.log-detail {
+  color: var(--color-text-muted);
+}
+
+/* ── Modal Dialog ─────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 6, 8, 0.75);
+  backdrop-filter: blur(4px);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.modal-overlay.hidden {
+  display: none !important;
+}
+
+.modal-card {
+  background: var(--color-surface);
+  border: 1px solid var(--atari-orange);
+  border-radius: var(--radius);
+  max-width: 480px;
+  width: 100%;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.75), 0 0 24px rgba(var(--color-accent-rgb), 0.3);
+  animation: modalPop 0.18s ease-out;
+  overflow: hidden;
+}
+
+@keyframes modalPop {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  background: #18130e;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.modal-header h3 {
+  font-family: 'Orbitron', sans-serif;
+  font-size: var(--font-size-base);
+  color: var(--atari-orange);
+}
+
+.modal-body {
+  padding: 18px;
+  font-size: var(--font-size-base);
+  color: var(--color-text);
+  line-height: 1.55;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 18px;
+  background: #0d0b09;
+  border-top: 1px solid var(--color-border);
+}
+
