@@ -1715,6 +1715,7 @@ function isTransientError(errStr) {
   const s = String(errStr).toLowerCase();
   return (
     s.includes("rate_limit") ||
+    s.includes("transient:") ||
     s.includes("too many requests") ||
     s.includes("timed out") ||
     s.includes("timeout") ||
@@ -2035,13 +2036,13 @@ async function runBulkScrape() {
         const errText = res && res.error ? res.error : "";
 
         // Check if ScreenScraper daily request quota was reached
-        if (errorKind === "DailyQuota" || errText.includes("DAILY_QUOTA_REACHED") || errText.includes("Quota journalier")) {
+        if (errorKind === "DailyQuota" || errText.includes("DAILY_QUOTA_REACHED")) {
           quotaHit = true;
           break;
         }
 
         // Check if ScreenScraper auth failed
-        if (errorKind === "Auth" || errText.toLowerCase().includes("login failed") || errText.toLowerCase().includes("identifiants")) {
+        if (errorKind === "Auth" || errText.toLowerCase().includes("login failed")) {
           break;
         }
 
@@ -2062,12 +2063,12 @@ async function runBulkScrape() {
         finalError = err;
         const errStr = err.toString();
 
-        if (errStr.includes("DAILY_QUOTA_REACHED") || errStr.includes("Quota journalier")) {
+        if (errStr.includes("DAILY_QUOTA_REACHED")) {
           quotaHit = true;
           break;
         }
 
-        if (errStr.toLowerCase().includes("login failed") || errStr.toLowerCase().includes("identifiants")) {
+        if (errStr.toLowerCase().includes("login failed")) {
           break;
         }
 
@@ -2091,7 +2092,7 @@ async function runBulkScrape() {
       const maxReq = bulkState.maxRequestsPerDay || 20000;
       showModalAlert(
         "ScreenScraper Daily Limit Reached",
-        `You have reached your ${maxReq.toLocaleString()} request daily limit on ScreenScraper. The limit resets at midnight GMT (00:00 GMT). Bulk scraping has been automatically paused. You can keep the app open and click 'Resume' tomorrow to continue right where you left off.`,
+        `ScreenScraper's daily limit has been reached. Your account allows ${maxReq.toLocaleString()} requests per day, and there is also a daily cap on ROMs it doesn't recognize. The limit resets at midnight GMT (00:00 GMT). Bulk scraping has been automatically paused. You can keep the app open and click 'Resume' tomorrow to continue right where you left off.`,
         "Got It",
         () => {}
       );
@@ -2099,8 +2100,8 @@ async function runBulkScrape() {
       continue;
     }
 
-    const isAuth = (res && (res.errorKind === "Auth" || (res.error && (res.error.toLowerCase().includes("login failed") || res.error.toLowerCase().includes("identifiants"))))) ||
-                   (finalError && (finalError.toString().toLowerCase().includes("login failed") || finalError.toString().toLowerCase().includes("identifiants")));
+    const isAuth = (res && (res.errorKind === "Auth" || (res.error && res.error.toLowerCase().includes("login failed")))) ||
+                   (finalError && finalError.toString().toLowerCase().includes("login failed"));
 
     if (isAuth) {
       appendBulkLog(rom.filename, "AUTH FAILED", `${sourceName} authentication failed. Bulk scrape stopped. Check ${credName} in Settings.`, "status-error");

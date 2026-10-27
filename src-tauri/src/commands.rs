@@ -1151,17 +1151,14 @@ pub struct BulkScrapeResult {
 
 fn classify_scrape_error(err: &str) -> &'static str {
     let s = err.to_ascii_lowercase();
-    if s.contains("daily_quota_reached") || s.contains("quota journalier") {
+    if s.contains("daily_quota_reached") {
         "DailyQuota"
-    } else if s.contains("rate_limit")
-        || s.contains("too many requests")
-        || s.contains("trop de requêtes")
-        || s.contains("maximum de threads")
-    {
+    } else if s.contains("rate_limit") || s.contains("too many requests") {
         "RateLimit"
     } else if s.contains("login failed") || s.contains("unauthorized") || s.contains("api key") {
         "Auth"
-    } else if s.contains("timed out")
+    } else if s.contains("transient:")
+        || s.contains("timed out")
         || s.contains("timeout")
         || s.contains("error sending request")
         || s.contains("connection reset")
@@ -1607,6 +1604,23 @@ mod tests {
         assert_eq!(
             classify_scrape_error("HTTP status server error (503 Service Unavailable) for url"),
             "Transient"
+        );
+        // Server errors from the ScreenScraper API (status-based, any 5xx).
+        assert_eq!(
+            classify_scrape_error("TRANSIENT: ScreenScraper server error (HTTP 500)"),
+            "Transient"
+        );
+        // The exact messages produced by classify_ss_status must land in the
+        // categories the UI acts on.
+        assert_eq!(
+            classify_scrape_error("DAILY_QUOTA_REACHED: ScreenScraper daily limit for unrecognized ROMs has been reached"),
+            "DailyQuota"
+        );
+        assert_eq!(
+            classify_scrape_error(
+                "ScreenScraper login failed — check credentials in Settings (HTTP 403)"
+            ),
+            "Auth"
         );
         assert_eq!(
             classify_scrape_error("No artwork candidates available to download"),
