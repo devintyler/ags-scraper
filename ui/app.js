@@ -1679,10 +1679,10 @@ async function loadScreenScraperQuota() {
 
   try {
     const quota = await invoke("get_ss_user_quota");
-    const maxRequests = Number(quota.maxRequestsPerDay ?? quota.max_requests_per_day ?? 0);
-    const requestsToday = Number(quota.requestsToday ?? quota.requests_today ?? 0);
+    const maxRequests = Number(quota.maxRequestsPerDay ?? 0);
+    const requestsToday = Number(quota.requestsToday ?? 0);
     const remaining = Number(quota.remaining ?? Math.max(0, maxRequests - requestsToday));
-    const maxThreads = Number(quota.maxThreads ?? quota.max_threads ?? 1);
+    const maxThreads = Number(quota.maxThreads ?? 1);
     bulkState.maxRequestsPerDay = maxRequests;
 
     if (maxRequests > 0) {
@@ -1715,15 +1715,16 @@ function isTransientError(errStr) {
   const s = String(errStr).toLowerCase();
   return (
     s.includes("rate_limit") ||
+    s.includes("transient:") ||
     s.includes("too many requests") ||
     s.includes("timed out") ||
     s.includes("timeout") ||
     s.includes("error sending request") ||
     s.includes("connection reset") ||
     s.includes("connection refused") ||
-    s.includes("502") ||
-    s.includes("503") ||
-    s.includes("504")
+    s.includes("502 bad gateway") ||
+    s.includes("503 service unavailable") ||
+    s.includes("504 gateway timeout")
   );
 }
 
@@ -1790,10 +1791,10 @@ async function triggerBulkScan() {
 
 function renderScanSummary(res) {
   bulkScanSummary.classList.remove("hidden");
-  const total = res.totalRoms ?? res.total_roms ?? 0;
-  const needsArt = res.needsArt ?? res.needs_art ?? 0;
-  const alreadyComplete = res.alreadyComplete ?? res.already_complete ?? 0;
-  const systemsFound = res.systemsFound ?? res.systems_found ?? {};
+  const total = res.totalRoms ?? 0;
+  const needsArt = res.needsArt ?? 0;
+  const alreadyComplete = res.alreadyComplete ?? 0;
+  const systemsFound = res.systemsFound ?? {};
 
   bulkSummaryCount.textContent = `${total.toLocaleString()} ROMs found`;
   bulkSummaryStatus.textContent = `${needsArt.toLocaleString()} needing artwork, ${alreadyComplete.toLocaleString()} complete`;
@@ -1822,27 +1823,26 @@ function filterScannedRoms() {
   const selectedFilter = bulkSystemFilter.value;
   const isCustomMissing = destCustomRadio.checked && !bulkCustomOutputDir.value.trim();
 
-  let roms = [];
-  if (selectedFilter === "auto") {
-    roms = allRoms.filter((r) => {
-      const sysId = r.systemId ?? r.system_id;
-      return sysId !== null && sysId !== undefined;
-    });
-    const skippedUnknown = allRoms.length - roms.length;
-    bulkState.filteredRoms = roms;
-    bulkStartBtn.disabled = roms.length === 0 || isCustomMissing;
-    if (skippedUnknown > 0) {
-      bulkStartBtn.textContent = `Start Bulk Scrape (${roms.length.toLocaleString()} games, ${skippedUnknown} unknown skipped)`;
+  // A picked system only applies to ROMs whose system couldn't be detected;
+  // detected ROMs always keep their own system.
+  const overrideId = selectedFilter === "auto" ? null : parseInt(selectedFilter, 10);
+  const detected = allRoms.filter((r) => r.systemId !== null && r.systemId !== undefined);
+  const unknownCount = allRoms.length - detected.length;
+  const roms = overrideId === null ? detected : allRoms;
+
+  bulkState.filteredRoms = roms;
+  bulkStartBtn.disabled = roms.length === 0 || isCustomMissing;
+
+  let label = `Start Bulk Scrape (${roms.length.toLocaleString()} games`;
+  if (unknownCount > 0) {
+    if (overrideId === null) {
+      label += `, ${unknownCount.toLocaleString()} unknown skipped`;
     } else {
-      bulkStartBtn.textContent = `Start Bulk Scrape (${roms.length.toLocaleString()} games)`;
+      const opt = bulkSystemFilter.options[bulkSystemFilter.selectedIndex];
+      label += `, ${unknownCount.toLocaleString()} unknown as ${opt ? opt.text : selectedFilter}`;
     }
-  } else {
-    const selectedOption = bulkSystemFilter.options[bulkSystemFilter.selectedIndex];
-    const systemName = selectedOption ? selectedOption.text : selectedFilter;
-    bulkState.filteredRoms = allRoms;
-    bulkStartBtn.disabled = allRoms.length === 0 || isCustomMissing;
-    bulkStartBtn.textContent = `Start Bulk Scrape (${allRoms.length.toLocaleString()} games - Override: ${systemName})`;
   }
+  bulkStartBtn.textContent = label + ")";
 
   if (isCustomMissing) {
     bulkStartBtn.title = "Select output directory first";
@@ -1922,7 +1922,7 @@ bulkStartBtn?.addEventListener("click", async () => {
   if (!bulkSkipExisting.checked) {
     showModalAlert(
       "Overwrite Existing Artwork?",
-      "You have unchecked 'Skip existing artwork'. Any existing artwork files in the destination directories will be overwritten.\\n\\nAre you sure you want to proceed?",
+      "You have unchecked 'Skip existing artwork'. Any existing artwork files in the destination directories will be overwritten. Are you sure you want to proceed?",
       "Overwrite & Start",
       () => {
         runBulkScrape();
@@ -1936,6 +1936,8 @@ bulkStartBtn?.addEventListener("click", async () => {
 
 async function runBulkScrape() {
   const source = getSelectedSource();
+  const sourceName = source === SOURCE_SCREENSCRAPER ? "ScreenScraper" : "SteamGridDB";
+  const credName = source === SOURCE_SCREENSCRAPER ? "your username and password" : "your API key";
   const roms = bulkState.filteredRoms;
   if (!roms || roms.length === 0) return;
 
@@ -1987,8 +1989,8 @@ async function runBulkScrape() {
     bulkStatusIndicator.textContent = `Processing…`;
 
     let outputDir = "";
-    const romDirPath = rom.dirPath || rom.dir_path || "";
-    const romRelPath = rom.relPath || rom.rel_path || "";
+    const romDirPath = rom.dirPath || "";
+    const romRelPath = rom.relPath || "";
     if (useAlongside) {
       outputDir = romDirPath;
     } else {
@@ -1998,7 +2000,7 @@ async function runBulkScrape() {
       outputDir = relParent ? `${customOut}\\${relParent}` : customOut;
     }
 
-    const effectiveSystemId = systemOverride !== null ? systemOverride : (rom.systemId ?? rom.system_id);
+    const effectiveSystemId = rom.systemId ?? systemOverride;
 
     const MAX_RETRIES = 3;
     let res = null;
@@ -2030,17 +2032,17 @@ async function runBulkScrape() {
           },
         });
 
-        const errorKind = res ? (res.errorKind || res.error_kind) : null;
+        const errorKind = res ? res.errorKind : null;
         const errText = res && res.error ? res.error : "";
 
         // Check if ScreenScraper daily request quota was reached
-        if (errorKind === "DailyQuota" || errText.includes("DAILY_QUOTA_REACHED") || errText.includes("Quota journalier")) {
+        if (errorKind === "DailyQuota" || errText.includes("DAILY_QUOTA_REACHED")) {
           quotaHit = true;
           break;
         }
 
         // Check if ScreenScraper auth failed
-        if (errorKind === "Auth" || errText.toLowerCase().includes("login failed") || errText.toLowerCase().includes("identifiants")) {
+        if (errorKind === "Auth" || errText.toLowerCase().includes("login failed")) {
           break;
         }
 
@@ -2061,12 +2063,12 @@ async function runBulkScrape() {
         finalError = err;
         const errStr = err.toString();
 
-        if (errStr.includes("DAILY_QUOTA_REACHED") || errStr.includes("Quota journalier")) {
+        if (errStr.includes("DAILY_QUOTA_REACHED")) {
           quotaHit = true;
           break;
         }
 
-        if (errStr.toLowerCase().includes("login failed") || errStr.toLowerCase().includes("identifiants")) {
+        if (errStr.toLowerCase().includes("login failed")) {
           break;
         }
 
@@ -2082,7 +2084,7 @@ async function runBulkScrape() {
     }
 
     if (quotaHit) {
-      appendBulkLog(rom.filename, "QUOTA LIMIT", "Daily request limit reached (resets 00:00 GMT). Scraping paused.", "status-quota");
+      appendBulkLog(rom.filename, "QUOTA LIMIT", "ScreenScraper daily limit reached (resets 00:00 GMT). Scraping paused.", "status-quota");
       bulkState.isPaused = true;
       bulkPauseBtn.textContent = "Resume";
       bulkStatusIndicator.textContent = "Daily Quota Reached — Paused";
@@ -2090,7 +2092,7 @@ async function runBulkScrape() {
       const maxReq = bulkState.maxRequestsPerDay || 20000;
       showModalAlert(
         "ScreenScraper Daily Limit Reached",
-        `You have reached your ${maxReq.toLocaleString()} request daily limit on ScreenScraper. The limit resets at midnight GMT (00:00 GMT). Bulk scraping has been automatically paused. You can keep the app open and click 'Resume' tomorrow to continue right where you left off.`,
+        `ScreenScraper's daily limit has been reached. Your account allows ${maxReq.toLocaleString()} requests per day, and there is also a daily cap on ROMs it doesn't recognize. The limit resets at midnight GMT (00:00 GMT). Bulk scraping has been automatically paused. You can keep the app open and click 'Resume' tomorrow to continue right where you left off.`,
         "Got It",
         () => {}
       );
@@ -2098,16 +2100,18 @@ async function runBulkScrape() {
       continue;
     }
 
-    const isAuth = (res && ((res.errorKind || res.error_kind) === "Auth" || (res.error && (res.error.toLowerCase().includes("login failed") || res.error.toLowerCase().includes("identifiants"))))) ||
-                   (finalError && (finalError.toString().toLowerCase().includes("login failed") || finalError.toString().toLowerCase().includes("identifiants")));
+    const isAuth = (res && (res.errorKind === "Auth" || (res.error && res.error.toLowerCase().includes("login failed")))) ||
+                   (finalError && finalError.toString().toLowerCase().includes("login failed"));
 
     if (isAuth) {
-      appendBulkLog(rom.filename, "AUTH FAILED", "ScreenScraper login failed. Bulk scrape stopped. Check credentials in Settings.", "status-error");
+      appendBulkLog(rom.filename, "AUTH FAILED", `${sourceName} authentication failed. Bulk scrape stopped. Check ${credName} in Settings.`, "status-error");
       bulkStatusIndicator.textContent = "Authentication Failed — Stopped";
       bulkState.shouldCancel = true;
       showModalAlert(
         "Authentication Failed",
-        "ScreenScraper authentication failed. Please verify your username and password in Settings.",
+        source === SOURCE_SCREENSCRAPER
+          ? `ScreenScraper authentication failed. Please verify ${credName} in Settings. If they are correct, ScreenScraper may be rejecting this app's developer login; try again later.`
+          : `${sourceName} authentication failed. Please verify ${credName} in Settings.`,
         "Open Settings",
         () => openSettings()
       );
@@ -2124,12 +2128,12 @@ async function runBulkScrape() {
         consecutiveErrors = 0;
         bulkState.stats.saved++;
         statSavedCount.textContent = bulkState.stats.saved.toString();
-        const files = res.savedFiles || res.saved_files || [];
-        const matched = res.matchedName || res.matched_name || "";
+        const files = res.savedFiles || [];
+        const matched = res.matchedName || "";
         const typesStr = files.join(", ");
         appendBulkLog(rom.filename, "SAVED", `${matched} (${typesStr})`, "status-saved");
       } else {
-        const errorKind = res.errorKind || res.error_kind;
+        const errorKind = res.errorKind;
         if (errorKind === "NotFound" || (res.error && res.error.toLowerCase().includes("not found"))) {
           consecutiveErrors = 0;
           bulkState.stats.error++;
@@ -2163,9 +2167,9 @@ async function runBulkScrape() {
       consecutiveErrors = 0;
     }
 
-    // Pacing delay (350ms) to respect ScreenScraper rate limits when network request was made
-    if (source === SOURCE_SCREENSCRAPER && (!res || !res.skipped)) {
-      await new Promise((r) => setTimeout(r, 350));
+    // Pacing delay to respect API rate limits, only when a network request was made
+    if (!res || !res.skipped) {
+      await new Promise((r) => setTimeout(r, source === SOURCE_SCREENSCRAPER ? 350 : 250));
     }
   }
 

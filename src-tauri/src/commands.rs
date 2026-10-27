@@ -1,5 +1,5 @@
-use crate::AppClient;
 use crate::config;
+use crate::AppClient;
 use secrecy::{ExposeSecret, SecretString};
 use serde::Serialize;
 
@@ -304,6 +304,13 @@ fn validate_image_url(url: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Text for a failed image download. ScreenScraper media URLs carry the dev and
+/// user credentials in their query string, and reqwest puts the full URL in its
+/// error text, so the URL must be dropped before the message reaches the UI.
+fn download_error_text(e: reqwest::Error) -> String {
+    e.without_url().to_string()
+}
+
 pub async fn download_and_cache_internal(
     client: &reqwest::Client,
     url: &str,
@@ -318,12 +325,12 @@ pub async fn download_and_cache_internal(
         .get(url)
         .send()
         .await
-        .map_err(|e| e.to_string())?
+        .map_err(download_error_text)?
         .error_for_status()
-        .map_err(|e| e.to_string())?
+        .map_err(download_error_text)?
         .bytes()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(download_error_text)?;
     // A concurrent request may have written the file while we were downloading;
     // overwriting with identical bytes is safe, but skip the write if possible.
     if !path.exists() {
@@ -747,6 +754,8 @@ pub fn detect_system_from_path_with_root(
             || folder_context.contains("supernintendo")
             || folder_context.contains("super famicom")
             || folder_context.contains("superfamicom")
+            || folder_context.contains("super nes")
+            || folder_context.contains("supernes")
             || contains_token(&folder_context, "snes")
             || contains_token(&folder_context, "sfc")
         {
@@ -811,6 +820,7 @@ pub fn detect_system_from_path_with_root(
             || folder_context.contains("mega drive")
             || folder_context.contains("megadrive")
             || contains_token(&folder_context, "smd")
+            || contains_token(&folder_context, "md")
             || contains_token(&folder_context, "gen")
         {
             return Some((1, "Sega Genesis"));
@@ -922,7 +932,8 @@ fn ext_priority(ext: &str) -> u8 {
     match ext.to_ascii_lowercase().as_str() {
         "cue" => 10,
         "chd" => 9,
-        "sfc" | "nes" | "sms" | "gg" | "gba" | "gbc" | "gb" | "pce" | "sgx" | "a26" | "a52" | "a78" | "lnx" => 8,
+        "sfc" | "nes" | "sms" | "gg" | "gba" | "gbc" | "gb" | "pce" | "sgx" | "a26" | "a52"
+        | "a78" | "lnx" => 8,
         "smc" | "fig" | "swc" | "gen" | "md" | "smd" => 7,
         "iso" => 6,
         "zip" | "7z" => 4,
@@ -965,7 +976,9 @@ fn scan_rom_directory_sync(
 
         for entry in entries.flatten() {
             // Never follow symlinks/junctions to prevent infinite loops
-            let Ok(file_type) = entry.file_type() else { continue };
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
             if file_type.is_symlink() {
                 continue;
             }
@@ -997,20 +1010,6 @@ fn scan_rom_directory_sync(
                     continue;
                 }
 
-                // .md is Sega Genesis only when in Genesis context; otherwise skip as markdown doc
-                if ext.eq_ignore_ascii_case("md") {
-                    let in_genesis_folder = path
-                        .parent()
-                        .map(|p| {
-                            let s = p.to_string_lossy().to_ascii_lowercase();
-                            s.contains("genesis") || s.contains("megadrive") || s.contains("mega drive")
-                        })
-                        .unwrap_or(false);
-                    if !in_genesis_folder {
-                        continue;
-                    }
-                }
-
                 let stem = path
                     .file_stem()
                     .and_then(|s| s.to_str())
@@ -1028,6 +1027,12 @@ fn scan_rom_directory_sync(
                     Some((id, name)) => (Some(id), name.to_string()),
                     None => (None, "Unknown System".to_string()),
                 };
+
+                // .md is also the markdown extension, so only treat it as a ROM when the
+                // folders under the scan root say Genesis (same detection as everything else).
+                if ext.eq_ignore_ascii_case("md") && system_id != Some(1) {
+                    continue;
+                }
 
                 let target_dir = if let Some(custom) = custom_output_dir {
                     let rel_parent = path
@@ -1153,24 +1158,21 @@ pub struct BulkScrapeResult {
 
 fn classify_scrape_error(err: &str) -> &'static str {
     let s = err.to_ascii_lowercase();
-    if s.contains("daily_quota_reached") || s.contains("quota journalier") {
+    if s.contains("daily_quota_reached") {
         "DailyQuota"
-    } else if s.contains("rate_limit")
-        || s.contains("too many requests")
-        || s.contains("trop de requêtes")
-        || s.contains("maximum de threads")
-    {
+    } else if s.contains("rate_limit") || s.contains("too many requests") {
         "RateLimit"
     } else if s.contains("login failed") || s.contains("unauthorized") || s.contains("api key") {
         "Auth"
-    } else if s.contains("timed out")
+    } else if s.contains("transient:")
+        || s.contains("timed out")
         || s.contains("timeout")
         || s.contains("error sending request")
         || s.contains("connection reset")
         || s.contains("connection refused")
-        || s.contains("502")
-        || s.contains("503")
-        || s.contains("504")
+        || s.contains("502 bad gateway")
+        || s.contains("503 service unavailable")
+        || s.contains("504 gateway timeout")
     {
         "Transient"
     } else if s.contains("no artwork") || s.contains("not found") {
@@ -1440,21 +1442,221 @@ mod tests {
 
     #[test]
     fn test_detect_system_unambiguous_extensions() {
-        assert_eq!(detect_system_from_path(std::path::Path::new("C:/games/Arcade Classics.a26")), Some((26, "Atari 2600")));
-        assert_eq!(detect_system_from_path(std::path::Path::new("C:/games/mame_fighter.nes")), Some((3, "NES")));
-        assert_eq!(detect_system_from_path(std::path::Path::new("C:/games/genesis_hero.sms")), Some((2, "Sega Master System")));
-        assert_eq!(detect_system_from_path(std::path::Path::new("C:/games/game.gba")), Some((12, "Game Boy Advance")));
-        assert_eq!(detect_system_from_path(std::path::Path::new("C:/games/game.pce")), Some((31, "PC Engine")));
-        assert_eq!(detect_system_from_path(std::path::Path::new("C:/games/game.gg")), Some((21, "Game Gear")));
+        assert_eq!(
+            detect_system_from_path(std::path::Path::new("C:/games/Arcade Classics.a26")),
+            Some((26, "Atari 2600"))
+        );
+        assert_eq!(
+            detect_system_from_path(std::path::Path::new("C:/games/mame_fighter.nes")),
+            Some((3, "NES"))
+        );
+        assert_eq!(
+            detect_system_from_path(std::path::Path::new("C:/games/genesis_hero.sms")),
+            Some((2, "Sega Master System"))
+        );
+        assert_eq!(
+            detect_system_from_path(std::path::Path::new("C:/games/game.gba")),
+            Some((12, "Game Boy Advance"))
+        );
+        assert_eq!(
+            detect_system_from_path(std::path::Path::new("C:/games/game.pce")),
+            Some((31, "PC Engine"))
+        );
+        assert_eq!(
+            detect_system_from_path(std::path::Path::new("C:/games/game.gg")),
+            Some((21, "Game Gear"))
+        );
     }
 
     #[test]
     fn test_detect_system_super_famicom_before_famicom() {
         let sfc_path = std::path::Path::new("C:/roms/Super Famicom/game.bin");
-        assert_eq!(detect_system_from_path(sfc_path), Some((4, "Super Nintendo")));
+        assert_eq!(
+            detect_system_from_path(sfc_path),
+            Some((4, "Super Nintendo"))
+        );
 
         let nes_path = std::path::Path::new("C:/roms/Famicom/game.bin");
         assert_eq!(detect_system_from_path(nes_path), Some((3, "NES")));
+    }
+
+    #[test]
+    fn test_detect_system_super_nes_folder() {
+        let root = std::path::Path::new("C:/roms");
+        let detect =
+            |p: &str| detect_system_from_path_with_root(std::path::Path::new(p), Some(root));
+
+        assert_eq!(
+            detect("C:/roms/Super NES/game.bin"),
+            Some((4, "Super Nintendo"))
+        );
+        assert_eq!(
+            detect("C:/roms/SuperNES/game.bin"),
+            Some((4, "Super Nintendo"))
+        );
+        assert_eq!(detect("C:/roms/SNES/game.bin"), Some((4, "Super Nintendo")));
+        // Plain NES folders must still be NES.
+        assert_eq!(detect("C:/roms/NES/game.bin"), Some((3, "NES")));
+        assert_eq!(detect("C:/roms/Nintendo NES/game.bin"), Some((3, "NES")));
+    }
+
+    #[test]
+    fn test_scan_md_only_counts_in_genesis_context() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "agsp_md_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        // The scan root itself has "genesis" in its name; that must not count.
+        let root = temp_dir.join("genesis_backup");
+        let md_dir = root.join("MD");
+        let docs_dir = root.join("Docs");
+        std::fs::create_dir_all(&md_dir).unwrap();
+        std::fs::create_dir_all(&docs_dir).unwrap();
+
+        std::fs::write(md_dir.join("Sonic.md"), b"dummy").unwrap();
+        std::fs::write(docs_dir.join("notes.md"), b"# notes").unwrap();
+        std::fs::write(root.join("todo.md"), b"# todo").unwrap();
+
+        let scan = scan_rom_directory_sync(root.to_str().unwrap(), true, None)
+            .expect("Scan should succeed");
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        assert_eq!(scan.total_roms, 1);
+        assert_eq!(scan.roms[0].filename, "Sonic.md");
+        assert_eq!(scan.roms[0].system_id, Some(1));
+    }
+
+    #[test]
+    fn test_json_keys_are_camel_case() {
+        let rom = DiscoveredRom {
+            path: String::new(),
+            rel_path: String::new(),
+            dir_path: String::new(),
+            filename: String::new(),
+            stem: String::new(),
+            extension: String::new(),
+            system_id: None,
+            system_name: String::new(),
+            has_all_art: false,
+            existing_art_count: 0,
+        };
+        let scan = ScanResult {
+            roms: vec![],
+            total_roms: 0,
+            already_complete: 0,
+            needs_art: 0,
+            systems_found: Default::default(),
+        };
+        let quota = crate::screenscraper::SsUserQuota {
+            requests_today: 0,
+            max_requests_per_day: 0,
+            remaining: 0,
+            max_threads: 0,
+        };
+        let result = BulkScrapeResult {
+            success: true,
+            skipped: false,
+            matched_name: None,
+            saved_files: vec![],
+            error: None,
+            error_kind: None,
+        };
+
+        // The frontend reads these exact keys; a rename here silently breaks the UI.
+        let has = |v: serde_json::Value, keys: &[&str]| keys.iter().all(|k| v.get(*k).is_some());
+        assert!(has(
+            serde_json::to_value(&rom).unwrap(),
+            &[
+                "relPath",
+                "dirPath",
+                "systemId",
+                "systemName",
+                "hasAllArt",
+                "existingArtCount"
+            ]
+        ));
+        assert!(has(
+            serde_json::to_value(&scan).unwrap(),
+            &["totalRoms", "alreadyComplete", "needsArt", "systemsFound"]
+        ));
+        assert!(has(
+            serde_json::to_value(&quota).unwrap(),
+            &[
+                "requestsToday",
+                "maxRequestsPerDay",
+                "remaining",
+                "maxThreads"
+            ]
+        ));
+        assert!(has(
+            serde_json::to_value(&result).unwrap(),
+            &["matchedName", "savedFiles", "errorKind"]
+        ));
+    }
+
+    #[test]
+    fn test_classify_scrape_error() {
+        assert_eq!(
+            classify_scrape_error("DAILY_QUOTA_REACHED: quota reached"),
+            "DailyQuota"
+        );
+        assert_eq!(classify_scrape_error("RATE_LIMIT: too many"), "RateLimit");
+        assert_eq!(
+            classify_scrape_error("ScreenScraper login failed — check credentials in Settings"),
+            "Auth"
+        );
+        assert_eq!(
+            classify_scrape_error("HTTP status server error (503 Service Unavailable) for url"),
+            "Transient"
+        );
+        // Server errors from the ScreenScraper API (status-based, any 5xx).
+        assert_eq!(
+            classify_scrape_error("TRANSIENT: ScreenScraper server error (HTTP 500)"),
+            "Transient"
+        );
+        // Feed the real messages from classify_ss_status through the classifier so
+        // the two can't drift apart. This is what decides stop / pause / retry.
+        let kind_for = |status: u16| match crate::screenscraper::classify_ss_status(status) {
+            crate::screenscraper::SsStatus::Fail(msg) => classify_scrape_error(&msg),
+            other => panic!("expected a failure for {status}, got {other:?}"),
+        };
+        assert_eq!(kind_for(429), "RateLimit");
+        assert_eq!(kind_for(430), "DailyQuota");
+        assert_eq!(kind_for(431), "DailyQuota");
+        assert_eq!(kind_for(403), "Auth");
+        // 401 is "closed to non-members / server busy" in the docs: retry, don't abort.
+        assert_eq!(kind_for(401), "Transient");
+        for status in [500, 502, 503, 504] {
+            assert_eq!(kind_for(status), "Transient", "status {status}");
+        }
+        for status in [400, 423, 426] {
+            assert_eq!(kind_for(status), "IO", "status {status}");
+        }
+        assert_eq!(
+            classify_scrape_error("No artwork candidates available to download"),
+            "NotFound"
+        );
+        // Digits in a file path must not be mistaken for an HTTP status.
+        assert_eq!(
+            classify_scrape_error("boxart: Failed to copy to C:\\roms\\Game 502.png: disk error"),
+            "IO"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_download_error_text_drops_the_url() {
+        // Connection to a closed local port fails immediately, no network needed.
+        let err = reqwest::Client::new()
+            .get("http://127.0.0.1:1/media?devpassword=SECRET-VALUE")
+            .send()
+            .await
+            .expect_err("nothing listens on port 1");
+        // Prove the test is meaningful: the raw error text does contain the URL.
+        assert!(err.to_string().contains("SECRET-VALUE"));
+        assert!(!download_error_text(err).contains("SECRET-VALUE"));
     }
 
     #[test]
@@ -1470,7 +1672,13 @@ mod tests {
 
     #[test]
     fn test_scan_rom_directory_temp_fixture() {
-        let temp_dir = std::env::temp_dir().join(format!("agsp_test_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let temp_dir = std::env::temp_dir().join(format!(
+            "agsp_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         let snes_dir = temp_dir.join("Super Nintendo");
         let nes_dir = temp_dir.join("NES");
         let gen_dir = temp_dir.join("Genesis");
@@ -1481,7 +1689,7 @@ mod tests {
         // Add ROMs
         std::fs::write(snes_dir.join("Mario.sfc"), b"dummy").unwrap();
         std::fs::write(nes_dir.join("Zelda.nes"), b"dummy").unwrap();
-        
+
         // Multi-file ROM deduplication test: Sonic.bin and Sonic.cue in same folder
         std::fs::write(gen_dir.join("Sonic.bin"), b"dummy").unwrap();
         std::fs::write(gen_dir.join("Sonic.cue"), b"dummy").unwrap();
@@ -1489,8 +1697,9 @@ mod tests {
         // Non-ROM doc test: README.md should be ignored
         std::fs::write(temp_dir.join("README.md"), b"# Notes").unwrap();
 
-        let scan = scan_rom_directory_sync(temp_dir.to_str().unwrap(), true, None).expect("Scan should succeed");
-        
+        let scan = scan_rom_directory_sync(temp_dir.to_str().unwrap(), true, None)
+            .expect("Scan should succeed");
+
         // Cleanup temp dir
         let _ = std::fs::remove_dir_all(&temp_dir);
 

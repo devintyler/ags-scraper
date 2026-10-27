@@ -174,8 +174,9 @@ fn extract_results(game: SsGame, candidates: Vec<SsGameCandidate>) -> SsResults 
 /// Computes CRC32 and MD5 hashes of a file in streaming 64 KB chunks, along with
 /// its size in bytes. Streaming avoids loading the entire ROM into RAM — important
 /// for large images (GBA, PC Engine CD, ISO formats).
+/// Returns `Ok(None)` without reading the file if it is larger than `max_bytes`.
 /// Synchronous blocking — only call from a blocking context.
-fn hash_rom(path: &str) -> Result<(u32, String, u64), String> {
+fn hash_rom(path: &str, max_bytes: u64) -> Result<Option<(u32, String, u64)>, String> {
     use md5::{Digest, Md5};
     use std::io::Read;
 
@@ -184,6 +185,9 @@ fn hash_rom(path: &str) -> Result<(u32, String, u64), String> {
         .metadata()
         .map_err(|e| format!("Failed to stat ROM: {e}"))?
         .len();
+    if size > max_bytes {
+        return Ok(None);
+    }
 
     let mut crc_hasher = crc32fast::Hasher::new();
     let mut md5_hasher = Md5::new();
@@ -202,24 +206,96 @@ fn hash_rom(path: &str) -> Result<(u32, String, u64), String> {
     let crc = crc_hasher.finalize();
     let md5_bytes = md5_hasher.finalize();
     let md5_hex: String = md5_bytes.iter().map(|b| format!("{b:02x}")).collect();
-    Ok((crc, md5_hex, size))
+    Ok(Some((crc, md5_hex, size)))
 }
+
+/// Files above this size are not hashed (large disc images, CHDs). The caller falls
+/// back to the text search, same as for any hash miss.
+const MAX_HASH_BYTES: u64 = 256 * 1024 * 1024;
 
 // ── Public API ─────────────────────────────────────────────────
 
-fn check_ss_errors(body: &str) -> Result<(), String> {
-    if body.contains("Erreur de login") {
-        return Err("ScreenScraper login failed — check credentials in Settings".to_string());
-    }
-    if body.contains("Quota journalier atteint") {
-        return Err("DAILY_QUOTA_REACHED: ScreenScraper daily request quota has been reached (resets at midnight GMT).".to_string());
-    }
-    if body.contains("Maximum de threads") || body.contains("Trop de requêtes") {
-        return Err("RATE_LIMIT: Too many requests — temporary rate limit hit.".to_string());
-    }
-    Ok(())
+/// What an HTTP status from ScreenScraper means for the caller.
+#[derive(Debug, PartialEq)]
+pub(crate) enum SsStatus {
+    Ok,
+    NotFound,
+    Fail(String),
 }
 
+/// Decides by HTTP status. The statuses are listed in the API docs
+/// (`misc/ss-api-docs.html`) and, unlike the body text, don't depend on the
+/// language the server answers in (the live API replies in French).
+/// The error prefixes (`RATE_LIMIT:`, `DAILY_QUOTA_REACHED:`, `TRANSIENT:` and the
+/// "login failed" wording) are what the command layer and the UI key on.
+pub(crate) fn classify_ss_status(status: u16) -> SsStatus {
+    match status {
+        200..=299 => SsStatus::Ok,
+        404 => SsStatus::NotFound,
+        429 => SsStatus::Fail(
+            "RATE_LIMIT: Too many requests — ScreenScraper thread limit reached.".to_string(),
+        ),
+        430 => SsStatus::Fail(
+            "DAILY_QUOTA_REACHED: ScreenScraper daily request quota has been reached (resets at midnight GMT)."
+                .to_string(),
+        ),
+        431 => SsStatus::Fail(
+            "DAILY_QUOTA_REACHED: ScreenScraper daily limit for unrecognized ROMs has been reached (resets at midnight GMT)."
+                .to_string(),
+        ),
+        // 403 is the app's developer login being rejected (not fixable in Settings).
+        403 => SsStatus::Fail(format!(
+            "ScreenScraper login failed — the app's developer credentials were rejected (HTTP {status})"
+        )),
+        // 401 means "API closed to non-members / server saturated" per the docs, but a
+        // wrong user login may also land here. Retry, and let the consecutive-error
+        // pause catch a persistent problem instead of aborting a long run.
+        401 => SsStatus::Fail(format!(
+            "TRANSIENT: ScreenScraper refused the request (HTTP {status}) — the login may be wrong or the server busy"
+        )),
+        423 | 426 => SsStatus::Fail(format!(
+            "ScreenScraper API unavailable (HTTP {status}) — it is closed or this app version is blocked"
+        )),
+        500..=599 => SsStatus::Fail(format!("TRANSIENT: ScreenScraper server error (HTTP {status})")),
+        _ => SsStatus::Fail(format!("ScreenScraper returned HTTP {status}")),
+    }
+}
+
+/// Builds the error for a 2xx body that did not parse as the expected JSON.
+/// Only the word "login" is looked for (same in French and English), and only in
+/// a short plain-text body, so an HTML maintenance page with a "Login" link is not
+/// mistaken for bad credentials. Anything else is reported as a plain parse error.
+fn explain_unparsable_body(body: &str, detail: String) -> String {
+    let trimmed = body.trim();
+    let short_plain_text = trimmed.len() <= 300 && !trimmed.contains('<');
+    if short_plain_text && !trimmed.starts_with('{') && trimmed.to_ascii_lowercase().contains("login")
+    {
+        return "ScreenScraper login failed — check credentials in Settings".to_string();
+    }
+    detail
+}
+
+enum SsBody {
+    Found(String),
+    NotFound,
+}
+
+/// Applies `classify_ss_status` and reads the body only for successful responses.
+async fn read_ss_body(
+    resp: reqwest::Response,
+    ss_user: &str,
+    ss_pass: &str,
+) -> Result<SsBody, String> {
+    match classify_ss_status(resp.status().as_u16()) {
+        SsStatus::NotFound => Ok(SsBody::NotFound),
+        SsStatus::Fail(msg) => Err(msg),
+        SsStatus::Ok => resp
+            .text()
+            .await
+            .map(SsBody::Found)
+            .map_err(|e| scrub(e, ss_user, ss_pass)),
+    }
+}
 
 /// Tries to identify a ROM by hash (CRC32 + MD5) via jeuInfos.
 /// Returns `None` if the ROM is not found in the SS database (caller should fall
@@ -232,7 +308,15 @@ pub async fn lookup_by_hash(
     ss_user: &str,
     ss_pass: &str,
 ) -> Result<Option<SsResults>, String> {
-    let (crc, md5, size) = hash_rom(rom_path)?;
+    // Hashing reads the whole file, so keep it off the async runtime threads.
+    let hash_path = rom_path.to_string();
+    let hashed = tokio::task::spawn_blocking(move || hash_rom(&hash_path, MAX_HASH_BYTES))
+        .await
+        .map_err(|e| format!("Hash task failed: {e}"))??;
+    let Some((crc, md5, size)) = hashed else {
+        dev_log!("[SS] lookup_by_hash: {rom_filename:?} exceeds hash size limit, skipping");
+        return Ok(None);
+    };
     let crc_hex = format!("{:08x}", crc);
     let size_str = size.to_string();
     let sys_str = system_id.to_string();
@@ -263,35 +347,22 @@ pub async fn lookup_by_hash(
         .await
         .map_err(|e| scrub(e, ss_user, ss_pass))?;
 
-    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
-        return Err("ScreenScraper login failed — check credentials in Settings".to_string());
-    }
-
-    if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
-        return Err("RATE_LIMIT: Too many requests — rate limit hit.".to_string());
-    }
-
-    let body = resp
-        .text()
-        .await
-        .map_err(|e| scrub(e, ss_user, ss_pass))?;
-
-    check_ss_errors(&body)?;
-
-    match serde_json::from_str::<SsInfoResponse>(&body) {
-        Ok(parsed) => match parsed.response.jeu {
-            Some(game) => Ok(Some(extract_results(game, vec![]))),
-            None => Ok(None),
-        },
-        Err(_) => {
-            if body.contains("jeuNotTrouve") || body.contains("Erreur") {
-                dev_log!("[SS] hash lookup: no match ({} bytes)", body.len());
-                Ok(None)
-            } else {
-                Err(scrub(format!("ScreenScraper API error: {}", body.trim()), ss_user, ss_pass))
-            }
+    let body = match read_ss_body(resp, ss_user, ss_pass).await? {
+        SsBody::Found(body) => body,
+        SsBody::NotFound => {
+            dev_log!("[SS] hash lookup: no match");
+            return Ok(None);
         }
-    }
+    };
+
+    let parsed: SsInfoResponse = serde_json::from_str(&body).map_err(|e| {
+        scrub(
+            explain_unparsable_body(&body, format!("ScreenScraper jeuInfos parse error: {e}")),
+            ss_user,
+            ss_pass,
+        )
+    })?;
+    Ok(parsed.response.jeu.map(|game| extract_results(game, vec![])))
 }
 
 /// Fetches full game info and media for a known SS game ID via jeuInfos.
@@ -322,33 +393,21 @@ pub async fn fetch_by_game_id(
         .await
         .map_err(|e| scrub(e, ss_user, ss_pass))?;
 
-    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
-        return Err("ScreenScraper login failed — check credentials in Settings".to_string());
-    }
+    let body = match read_ss_body(resp, ss_user, ss_pass).await? {
+        SsBody::Found(body) => body,
+        SsBody::NotFound => return Ok(SsResults::empty()),
+    };
 
-    if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
-        return Err("RATE_LIMIT: Too many requests — rate limit hit.".to_string());
-    }
-
-    let body = resp
-        .text()
-        .await
-        .map_err(|e| scrub(e, ss_user, ss_pass))?;
-
-    check_ss_errors(&body)?;
-
-    match serde_json::from_str::<SsInfoResponse>(&body) {
-        Ok(parsed) => match parsed.response.jeu {
-            Some(game) => Ok(extract_results(game, vec![])),
-            None => Ok(SsResults::empty()),
-        },
-        Err(_) => {
-            if body.contains("jeuNotTrouve") || body.contains("Erreur") {
-                Ok(SsResults::empty())
-            } else {
-                Err(scrub(format!("ScreenScraper API error: {}", body.trim()), ss_user, ss_pass))
-            }
-        }
+    let parsed: SsInfoResponse = serde_json::from_str(&body).map_err(|e| {
+        scrub(
+            explain_unparsable_body(&body, format!("ScreenScraper jeuInfos parse error: {e}")),
+            ss_user,
+            ss_pass,
+        )
+    })?;
+    match parsed.response.jeu {
+        Some(game) => Ok(extract_results(game, vec![])),
+        None => Ok(SsResults::empty()),
     }
 }
 
@@ -384,31 +443,21 @@ pub async fn search_game(
         .await
         .map_err(|e| scrub(e, ss_user, ss_pass))?;
 
-    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
-        return Err("ScreenScraper login failed — check credentials in Settings".to_string());
-    }
-
-    if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
-        return Err("RATE_LIMIT: Too many requests — rate limit hit.".to_string());
-    }
-
-    let body = resp
-        .text()
-        .await
-        .map_err(|e| scrub(e, ss_user, ss_pass))?;
-
-    check_ss_errors(&body)?;
-
-    let parsed: SsResponse = match serde_json::from_str(&body) {
-        Ok(p) => p,
-        Err(_) => {
-            if body.contains("jeuNotTrouve") || body.contains("Erreur") {
-                dev_log!("[SS] search: no match ({} bytes)", body.len());
-                return Ok(SsResults::empty());
-            }
-            return Err(scrub(format!("ScreenScraper API error: {}", body.trim()), ss_user, ss_pass));
+    let body = match read_ss_body(resp, ss_user, ss_pass).await? {
+        SsBody::Found(body) => body,
+        SsBody::NotFound => {
+            dev_log!("[SS] search: no match");
+            return Ok(SsResults::empty());
         }
     };
+
+    let parsed: SsResponse = serde_json::from_str(&body).map_err(|e| {
+        scrub(
+            explain_unparsable_body(&body, format!("ScreenScraper parse error: {e}")),
+            ss_user,
+            ss_pass,
+        )
+    })?;
 
     let jeux = parsed.response.jeux;
 
@@ -533,19 +582,18 @@ pub async fn get_user_quota(
         .await
         .map_err(|e| scrub(e, ss_user, ss_pass))?;
 
-    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
-        return Err("ScreenScraper login failed — check credentials in Settings".to_string());
-    }
+    let body = match read_ss_body(resp, ss_user, ss_pass).await? {
+        SsBody::Found(body) => body,
+        SsBody::NotFound => return Err("No user profile returned from ScreenScraper".to_string()),
+    };
 
-    let body = resp
-        .text()
-        .await
-        .map_err(|e| scrub(e, ss_user, ss_pass))?;
-
-    check_ss_errors(&body)?;
-
-    let parsed: SsUserResponse = serde_json::from_str(&body)
-        .map_err(|e| scrub(format!("ScreenScraper parse error: {e}"), ss_user, ss_pass))?;
+    let parsed: SsUserResponse = serde_json::from_str(&body).map_err(|e| {
+        scrub(
+            explain_unparsable_body(&body, format!("ScreenScraper parse error: {e}")),
+            ss_user,
+            ss_pass,
+        )
+    })?;
 
     let Some(user) = parsed.response.ssuser else {
         return Err("No user profile returned from ScreenScraper".to_string());
@@ -564,3 +612,96 @@ pub async fn get_user_quota(
     })
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_file(name: &str, bytes: &[u8]) -> std::path::PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "agsp_hash_{}_{}",
+            std::process::id(),
+            name
+        ));
+        std::fs::write(&path, bytes).unwrap();
+        path
+    }
+
+    #[test]
+    fn test_classify_ss_status() {
+        assert_eq!(classify_ss_status(200), SsStatus::Ok);
+        assert_eq!(classify_ss_status(404), SsStatus::NotFound);
+
+        let fail = |status| match classify_ss_status(status) {
+            SsStatus::Fail(msg) => msg,
+            other => panic!("expected Fail for {status}, got {other:?}"),
+        };
+        assert!(fail(429).starts_with("RATE_LIMIT:"));
+        assert!(fail(430).starts_with("DAILY_QUOTA_REACHED:"));
+        assert!(fail(431).starts_with("DAILY_QUOTA_REACHED:"));
+        assert!(fail(401).starts_with("TRANSIENT:"));
+        assert!(fail(403).contains("login failed"));
+        assert!(fail(403).contains("developer"));
+        for status in [500, 502, 503, 504] {
+            assert!(fail(status).starts_with("TRANSIENT:"), "status {status}");
+        }
+        assert!(fail(423).contains("unavailable"));
+        assert!(fail(426).contains("unavailable"));
+        // An unexpected status must never be mistaken for "not found".
+        assert!(!matches!(classify_ss_status(418), SsStatus::NotFound));
+    }
+
+    #[test]
+    fn test_explain_unparsable_body() {
+        // Real response captured from the live API for a bad hash lookup.
+        let not_found = "Erreur : Rom/Iso/Dossier non trouvée !";
+        assert_eq!(
+            explain_unparsable_body(not_found, "parse error".to_string()),
+            "parse error"
+        );
+        // A login problem is recognised by the word "login" in a non-JSON body.
+        assert!(
+            explain_unparsable_body("Erreur de login : vérifiez", "x".to_string())
+                .contains("login failed")
+        );
+        // An HTML page (maintenance, CDN) with a "Login" link is not a credentials error.
+        assert_eq!(
+            explain_unparsable_body(
+                "<html><body><a href=\"/login\">Login</a> Maintenance</body></html>",
+                "html".to_string()
+            ),
+            "html"
+        );
+        // A JSON body that merely mentions login is just a parse failure.
+        assert_eq!(
+            explain_unparsable_body("{\"login\": broken", "bad json".to_string()),
+            "bad json"
+        );
+    }
+
+    #[test]
+    fn test_hash_rom_known_values() {
+        let path = temp_file("abc.bin", b"abc");
+        let result = hash_rom(path.to_str().unwrap(), 1024);
+        let _ = std::fs::remove_file(&path);
+
+        let (crc, md5, size) = result.unwrap().expect("small file should be hashed");
+        assert_eq!(crc, 0x352441c2);
+        assert_eq!(md5, "900150983cd24fb0d6963f7d28e17f72");
+        assert_eq!(size, 3);
+    }
+
+    #[test]
+    fn test_hash_rom_skips_files_over_limit() {
+        let path = temp_file("big.bin", b"abc");
+        let result = hash_rom(path.to_str().unwrap(), 2);
+        let _ = std::fs::remove_file(&path);
+
+        assert!(result.unwrap().is_none());
+    }
+
+    #[test]
+    fn test_hash_rom_missing_file_is_error() {
+        assert!(hash_rom("Z:/definitely/not/here.bin", 1024).is_err());
+    }
+}
